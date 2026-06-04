@@ -40,7 +40,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&issue, "issue", "i", "", "Issue number or URL")
 
 	rootCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		if issue != "" {
+		if _, err := resolveIssue(args); err == nil {
 			return runTriage(cmd, args)
 		}
 		return cmd.Help()
