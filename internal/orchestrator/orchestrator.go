@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/harsh-m-patil/oss-triage-agent/internal/agent"
 	"github.com/harsh-m-patil/oss-triage-agent/internal/issue"
@@ -18,15 +19,25 @@ type Deps struct {
 
 // RunInput identifies the issue and workspace for a triage run.
 type RunInput struct {
-	IssueID   string `json:"issue_id"`
-	Workspace string `json:"workspace"`
+	IssueID           string        `json:"issue_id"`
+	Workspace         string        `json:"workspace"`
+	IdleTimeout       time.Duration `json:"idle_timeout,omitempty"`
+	CompletionTimeout time.Duration `json:"completion_timeout,omitempty"`
 }
 
 // RunSummary captures observable outcomes from a triage run.
 type RunSummary struct {
-	IssueNumber int                `json:"issue_number"`
-	AgentName   string             `json:"agent_name"`
+	IssueNumber int                 `json:"issue_number"`
+	AgentName   string              `json:"agent_name"`
 	SandboxKind sandbox.SandboxKind `json:"sandbox_kind"`
+	// Completed is true when CompletionSignal appeared in agent stdout.
+	Completed bool `json:"completed"`
+	// Success is true when the run finished per AFK protocol (signal seen).
+	Success bool `json:"success"`
+	// TimeoutKind is set when a configured timeout ended the run unsuccessfully.
+	TimeoutKind TimeoutKind `json:"timeout_kind,omitempty"`
+	// Events holds normalized agent stream events from stdout lines.
+	Events []agent.AgentEvent `json:"events,omitempty"`
 }
 
 // Orchestrator coordinates AFK workflows using provider interfaces only.
@@ -52,11 +63,26 @@ func (o *Orchestrator) Run(ctx context.Context, in RunInput) (RunSummary, error)
 	}
 	defer handle.Close()
 
-	_ = o.deps.Agent.BuildCommand(it.Body)
+	argv := o.deps.Agent.BuildCommand(it.Body)
+	if len(argv) == 0 {
+		return RunSummary{}, fmt.Errorf("agent %q returned empty command", o.deps.Agent.Name())
+	}
 
-	return RunSummary{
+	summary := RunSummary{
 		IssueNumber: it.Number,
 		AgentName:   o.deps.Agent.Name(),
 		SandboxKind: handle.Kind(),
-	}, nil
+	}
+
+	err = o.runAgent(
+		ctx,
+		handle,
+		argv[0],
+		argv[1:],
+		o.deps.Agent.Env(),
+		in.IdleTimeout,
+		in.CompletionTimeout,
+		&summary,
+	)
+	return summary, err
 }

@@ -34,7 +34,7 @@ func (h *handle) Kind() sandbox.SandboxKind { return h.kind }
 
 func (h *handle) WorkspacePath() string { return h.workspace }
 
-func (h *handle) Exec(_ context.Context, _ string, _ []string, _, _ func(line string)) error {
+func (h *handle) Exec(_ context.Context, _ string, _ []string, _ map[string]string, _, _ func(line string)) error {
 	return nil
 }
 

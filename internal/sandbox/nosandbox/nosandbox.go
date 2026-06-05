@@ -31,8 +31,8 @@ func (h *handle) Kind() sandbox.SandboxKind { return sandbox.SandboxNone }
 
 func (h *handle) WorkspacePath() string { return h.workspace }
 
-func (h *handle) Exec(ctx context.Context, command string, args []string, onStdout, onStderr func(line string)) error {
-	return runCommand(ctx, h.workspace, command, args, onStdout, onStderr)
+func (h *handle) Exec(ctx context.Context, command string, args []string, env map[string]string, onStdout, onStderr func(line string)) error {
+	return runCommand(ctx, h.workspace, command, args, env, onStdout, onStderr)
 }
 
 func (h *handle) Close() error { return nil }

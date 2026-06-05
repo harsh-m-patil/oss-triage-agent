@@ -56,6 +56,7 @@ func TestHandle_Exec_streamsStdoutLinesInOrder(t *testing.T) {
 		context.Background(),
 		"sh",
 		[]string{"-c", "echo one; echo two; echo three"},
+		nil,
 		func(line string) { stdout = append(stdout, line) },
 		nil,
 	)
@@ -89,6 +90,7 @@ func TestHandle_Exec_deliversEmptyStdoutLines(t *testing.T) {
 		context.Background(),
 		"sh",
 		[]string{"-c", "printf 'a\n\nb\n'"},
+		nil,
 		func(line string) { stdout = append(stdout, line) },
 		nil,
 	)
@@ -122,6 +124,7 @@ func TestHandle_Exec_flushesPartialStdoutLineOnExit(t *testing.T) {
 		context.Background(),
 		"sh",
 		[]string{"-c", "printf 'no trailing newline'"},
+		nil,
 		func(line string) { stdout = append(stdout, line) },
 		nil,
 	)
@@ -151,6 +154,7 @@ func TestHandle_Exec_invokesStdoutCallbackWhileProcessRuns(t *testing.T) {
 			context.Background(),
 			"sh",
 			[]string{"-c", "echo first; sleep 0.2; echo second"},
+			nil,
 			func(line string) {
 				if line == "first" {
 					close(firstLine)
@@ -197,6 +201,7 @@ func TestHandle_Exec_streamsStdoutLineLongerThanScannerDefaultLimit(t *testing.T
 			`line=$(head -c %d /dev/zero | tr '\0' 'x'); printf '%%s\n' "$line"; echo trailer`,
 			longLineBytes,
 		)},
+		nil,
 		func(line string) { stdout = append(stdout, line) },
 		nil,
 	)

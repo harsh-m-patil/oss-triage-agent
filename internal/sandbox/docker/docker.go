@@ -109,7 +109,7 @@ func (h *handle) Kind() sandbox.SandboxKind { return sandbox.SandboxBindMount }
 
 func (h *handle) WorkspacePath() string { return WorkspaceInContainer }
 
-func (h *handle) Exec(ctx context.Context, command string, args []string, onStdout, onStderr func(line string)) error {
+func (h *handle) Exec(ctx context.Context, command string, args []string, _ map[string]string, onStdout, onStderr func(line string)) error {
 	return runContainerExec(ctx, h.cli, h.containerID, WorkspaceInContainer, command, args, onStdout, onStderr)
 }
 

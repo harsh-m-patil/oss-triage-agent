@@ -74,6 +74,7 @@ func TestHandle_Exec_runsCommandInBindMountedWorkspace(t *testing.T) {
 		context.Background(),
 		"cat",
 		[]string{"marker"},
+		nil,
 		func(line string) { stdout = append(stdout, line) },
 		nil,
 	)
@@ -89,6 +90,7 @@ func TestHandle_Exec_runsCommandInBindMountedWorkspace(t *testing.T) {
 		context.Background(),
 		"echo",
 		[]string{"hello"},
+		nil,
 		func(line string) { stdout = append(stdout, line) },
 		nil,
 	)
@@ -116,7 +118,7 @@ func TestHandle_Close_stopsContainerAndIsIdempotent(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	if err := handle.Exec(context.Background(), "echo", []string{"before"}, nil, nil); err != nil {
+	if err := handle.Exec(context.Background(), "echo", []string{"before"}, nil, nil, nil); err != nil {
 		t.Fatalf("Exec before Close: %v", err)
 	}
 
@@ -127,7 +129,7 @@ func TestHandle_Close_stopsContainerAndIsIdempotent(t *testing.T) {
 		t.Fatalf("second Close: %v", err)
 	}
 
-	err = handle.Exec(context.Background(), "echo", []string{"after"}, nil, nil)
+	err = handle.Exec(context.Background(), "echo", []string{"after"}, nil, nil, nil)
 	if err == nil {
 		t.Fatal("Exec after Close: want error, got nil")
 	}
@@ -157,6 +159,7 @@ func TestHandle_Exec_invokesStdoutCallbackWhileProcessRuns(t *testing.T) {
 			context.Background(),
 			"sh",
 			[]string{"-c", "echo first; sleep 0.2; echo second"},
+			nil,
 			func(line string) {
 				if line == "first" {
 					close(firstLine)
@@ -205,7 +208,7 @@ func TestHandle_Exec_returnsWhenContextCancelled(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- handle.Exec(ctx, "sleep", []string{"3600"}, nil, nil)
+		done <- handle.Exec(ctx, "sleep", []string{"3600"}, nil, nil, nil)
 	}()
 
 	select {
