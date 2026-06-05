@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"syscall"
 
+	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
@@ -77,8 +79,25 @@ func runContainerExec(
 		recordStreamErr(streamio.Lines(stderrR, onStderr))
 	}()
 
-	copyWg.Wait()
-	streamWg.Wait()
+	waitDone := make(chan struct{})
+	go func() {
+		copyWg.Wait()
+		streamWg.Wait()
+		close(waitDone)
+	}()
+
+	var ctxErr error
+	select {
+	case <-waitDone:
+	case <-ctx.Done():
+		ctxErr = ctx.Err()
+		stopExec(cli, execResp.ID, &attach)
+	}
+	<-waitDone
+
+	if ctxErr != nil {
+		return errors.Join(ctxErr, copyErr, streamErr)
+	}
 
 	inspect, err := cli.ContainerExecInspect(ctx, execResp.ID)
 	if err != nil {
@@ -90,4 +109,19 @@ func runContainerExec(
 		exitErr = fmt.Errorf("exec exited with code %d", inspect.ExitCode)
 	}
 	return errors.Join(copyErr, streamErr, exitErr)
+}
+
+// stopExec closes the attach stream and kills the exec process so waiters unblock.
+func stopExec(cli *client.Client, execID string, attach *types.HijackedResponse) {
+	_ = attach.CloseWrite()
+	attach.Close()
+	killRunningExec(cli, execID)
+}
+
+func killRunningExec(cli *client.Client, execID string) {
+	inspect, err := cli.ContainerExecInspect(context.Background(), execID)
+	if err != nil || !inspect.Running || inspect.Pid <= 0 {
+		return
+	}
+	_ = syscall.Kill(inspect.Pid, syscall.SIGKILL)
 }

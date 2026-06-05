@@ -2,6 +2,7 @@ package docker_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -179,6 +180,41 @@ func TestHandle_Exec_invokesStdoutCallbackWhileProcessRuns(t *testing.T) {
 
 	if err := <-done; err != nil {
 		t.Fatalf("Exec: %v", err)
+	}
+}
+
+func TestHandle_Exec_returnsWhenContextCancelled(t *testing.T) {
+	if !dockerAvailable(t) {
+		t.Skip("Docker daemon not available")
+	}
+	t.Parallel()
+
+	p, err := dockerprovider.NewProvider()
+	if err != nil {
+		t.Fatalf("NewProvider: %v", err)
+	}
+
+	handle, err := p.Create(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	defer handle.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- handle.Exec(ctx, "sleep", []string{"3600"}, nil, nil)
+	}()
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("Exec error = %v, want context.DeadlineExceeded", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Exec did not return after context deadline")
 	}
 }
 
