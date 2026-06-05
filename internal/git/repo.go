@@ -12,8 +12,8 @@ var ErrWorktreeDirty = errors.New("git: worktree has uncommitted changes")
 
 // Worktree describes a prepared issue-scoped working tree.
 type Worktree struct {
-	Path   string
-	Branch string
+	Path   string `json:"path"`
+	Branch string `json:"branch"`
 }
 
 // Repository abstracts local git operations used by workflows.

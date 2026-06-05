@@ -18,15 +18,15 @@ type Deps struct {
 
 // RunInput identifies the issue and workspace for a triage run.
 type RunInput struct {
-	IssueID   string
-	Workspace string
+	IssueID   string `json:"issue_id"`
+	Workspace string `json:"workspace"`
 }
 
 // RunSummary captures observable outcomes from a triage run.
 type RunSummary struct {
-	IssueNumber int
-	AgentName   string
-	SandboxKind sandbox.SandboxKind
+	IssueNumber int                `json:"issue_number"`
+	AgentName   string             `json:"agent_name"`
+	SandboxKind sandbox.SandboxKind `json:"sandbox_kind"`
 }
 
 // Orchestrator coordinates AFK workflows using provider interfaces only.
