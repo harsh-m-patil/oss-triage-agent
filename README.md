@@ -19,7 +19,7 @@ Foundation is in place with working provider adapters and an orchestrator **Run*
 | Docker bind-mount sandbox (`internal/sandbox/docker`) | Done |
 | `agent run` CLI (stream normalized events) | Done |
 | Workflow subcommands (`triage`, `plan`, `build`) | Stubs |
-| GitHub **IssueTracker** adapter | Not started |
+| GitHub **IssueTracker** adapter (`internal/issue/github`) | Done |
 
 ## Requirements
 
