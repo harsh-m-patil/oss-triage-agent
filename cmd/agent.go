@@ -4,11 +4,13 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 
 	"github.com/harsh-m-patil/oss-triage-agent/internal/agent"
 	"github.com/harsh-m-patil/oss-triage-agent/internal/agent/opencode"
@@ -62,7 +64,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		Env:                        opencodeEnvFromOS(),
 	})
 
-	return streamAgentEvents(cmd.Context(), provider, prompt, os.Stdout)
+	return streamAgentEvents(cmd.Context(), provider, prompt, os.Stdout, os.Stderr)
 }
 
 func resolveAgentPrompt(flagValue string) (string, error) {
@@ -87,7 +89,7 @@ func opencodeEnvFromOS() map[string]string {
 	return nil
 }
 
-func streamAgentEvents(ctx context.Context, provider agent.AgentProvider, prompt string, out io.Writer) error {
+func streamAgentEvents(ctx context.Context, provider agent.AgentProvider, prompt string, out, errOut io.Writer) error {
 	argv := provider.BuildCommand(prompt)
 	if len(argv) == 0 {
 		return fmt.Errorf("provider %q returned empty command", provider.Name())
@@ -115,8 +117,40 @@ func streamAgentEvents(ctx context.Context, provider agent.AgentProvider, prompt
 		return fmt.Errorf("start %s: %w", command, err)
 	}
 
-	enc := json.NewEncoder(out)
-	br := bufio.NewReader(stdout)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var streamErr error
+	recordStreamErr := func(err error) {
+		if err == nil {
+			return
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		if streamErr == nil {
+			streamErr = err
+		}
+	}
+
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		recordStreamErr(streamStdoutEvents(stdout, provider, json.NewEncoder(out)))
+	}()
+	go func() {
+		defer wg.Done()
+		recordStreamErr(streamStderr(stderr, errOut))
+	}()
+
+	wg.Wait()
+	waitErr := execCmd.Wait()
+	if streamErr != nil {
+		return errors.Join(streamErr, waitErr)
+	}
+	return waitErr
+}
+
+func streamStdoutEvents(r io.Reader, provider agent.AgentProvider, enc *json.Encoder) error {
+	br := bufio.NewReader(r)
 	for {
 		line, err := br.ReadString('\n')
 		if len(line) > 0 {
@@ -133,16 +167,11 @@ func streamAgentEvents(ctx context.Context, provider agent.AgentProvider, prompt
 		}
 		if err != nil {
 			if err == io.EOF {
-				break
+				return nil
 			}
 			return err
 		}
 	}
-
-	if err := streamStderr(stderr, os.Stderr); err != nil {
-		return err
-	}
-	return execCmd.Wait()
 }
 
 func streamStderr(r io.Reader, out io.Writer) error {

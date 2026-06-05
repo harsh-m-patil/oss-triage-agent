@@ -5,8 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/harsh-m-patil/oss-triage-agent/internal/agent"
 )
@@ -38,7 +40,7 @@ func TestStreamAgentEvents_printsNormalizedEvents(t *testing.T) {
 
 	provider := echoJSONProvider{}
 	var out bytes.Buffer
-	err := streamAgentEvents(context.Background(), provider, "hello", &out)
+	err := streamAgentEvents(context.Background(), provider, "hello", &out, io.Discard)
 	if err != nil {
 		t.Fatalf("streamAgentEvents: %v", err)
 	}
@@ -57,6 +59,40 @@ func TestStreamAgentEvents_printsNormalizedEvents(t *testing.T) {
 	}
 	if strings.Contains(lines[0], `"Kind"`) {
 		t.Fatalf("output uses PascalCase JSON keys: %s", lines[0])
+	}
+}
+
+type stderrFloodProvider struct{}
+
+func (stderrFloodProvider) Name() string { return "stderr-flood" }
+func (stderrFloodProvider) Env() map[string]string { return nil }
+func (stderrFloodProvider) BuildCommand(prompt string) []string {
+	script := fmt.Sprintf(
+		`i=0; while [ $i -lt 5000 ]; do echo "stderr-$i" >&2; i=$((i+1)); done; echo '{"type":"text","content":%q}'`,
+		prompt,
+	)
+	return []string{"sh", "-c", script}
+}
+func (stderrFloodProvider) ParseStreamLine(line string) ([]agent.AgentEvent, error) {
+	return echoJSONProvider{}.ParseStreamLine(line)
+}
+
+func TestStreamAgentEvents_drainsStderrWhileReadingStdout(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var out, errOut bytes.Buffer
+	err := streamAgentEvents(ctx, stderrFloodProvider{}, "ok", &out, &errOut)
+	if err != nil {
+		t.Fatalf("streamAgentEvents: %v", err)
+	}
+	if !strings.Contains(out.String(), `"text":"ok"`) {
+		t.Fatalf("stdout = %q, want normalized text event", out.String())
+	}
+	if errOut.Len() == 0 {
+		t.Fatal("stderr was not drained")
 	}
 }
 
