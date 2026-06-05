@@ -28,12 +28,19 @@ var (
 var agentCmd = &cobra.Command{
 	Use:   "agent",
 	Short: "Run and inspect AFK coding agents",
+	Long:  "Low-level commands for running agent providers outside the triage, plan, and build workflows.",
 }
 
 var agentRunCmd = &cobra.Command{
 	Use:   "run",
 	Short: "Run an agent and print normalized stream events",
-	RunE:  runAgent,
+	Long: `Run an OpenCode agent and emit normalized Agent events as JSON lines on stdout.
+
+Useful for debugging stream parsing and agent configuration before wiring a
+full workflow. Prompt via --prompt or stdin.`,
+	Example: `  oss-triage-agent agent run --prompt "Summarize this repo"
+  echo "What changed?" | oss-triage-agent agent run`,
+	RunE: runAgent,
 }
 
 func init() {
