@@ -256,6 +256,50 @@ func TestTracker_ListIssues_withoutQuery_returnsOpenIssues(t *testing.T) {
 	}
 }
 
+func TestTracker_ListRepoLabels_returnsLabelNames(t *testing.T) {
+	t.Parallel()
+
+	tracker := newTestTracker(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/repos/acme/widget/labels" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `[{"name":"bug"},{"name":"needs-triage"}]`)
+	})
+
+	got, err := tracker.ListRepoLabels(context.Background())
+	if err != nil {
+		t.Fatalf("ListRepoLabels: %v", err)
+	}
+	if len(got) != 2 || got[0] != "bug" || got[1] != "needs-triage" {
+		t.Fatalf("ListRepoLabels = %v, want [bug needs-triage]", got)
+	}
+}
+
+func TestTracker_CreateRepoLabel_postsMetadata(t *testing.T) {
+	t.Parallel()
+
+	var got map[string]string
+	tracker := newTestTracker(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/repos/acme/widget/labels" {
+			http.NotFound(w, r)
+			return
+		}
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Errorf("decode body: %v", err)
+		}
+		w.WriteHeader(http.StatusCreated)
+	})
+
+	if err := tracker.CreateRepoLabel(context.Background(), "ready-for-agent", "0e8a16", "Approved for AFK agent workflows"); err != nil {
+		t.Fatalf("CreateRepoLabel: %v", err)
+	}
+	if got["name"] != "ready-for-agent" || got["color"] != "0e8a16" || got["description"] != "Approved for AFK agent workflows" {
+		t.Fatalf("CreateRepoLabel payload = %#v", got)
+	}
+}
+
 func TestTracker_ListIssues_withLabelFilter_usesSearchAPI(t *testing.T) {
 	t.Parallel()
 
