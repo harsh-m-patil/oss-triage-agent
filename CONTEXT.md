@@ -146,6 +146,100 @@ _Avoid_: slog wrapper (implementation may use slog later).
 Named stage in an AFK run: `start`, `triage`, `complete`. Stub enum for future state tracking.
 _Avoid_: status, step.
 
+## AFK pipeline boundaries
+
+Sandcastle-style AFK work flows through three **Workflow kind**s in order: **Triage** → **Plan** → **Build**. Each workflow is a separate CLI invocation and orchestrator **Run**; there is no single long-lived pipeline process.
+
+| Stage | Workflow kind | Owns | Does not own |
+|-------|---------------|------|--------------|
+| **Triage** | `triage` | Read **Issue**, assess fit, emit triage output (brief, comment, label updates via **IssueTracker**) | Branch/worktree creation, code changes, completion-signal handling |
+| **Plan** | `plan` | Turn a triaged **Issue** into an implementation plan (prompt + agent output) | Applying labels beyond what the plan workflow defines, git writes, sandbox teardown policy |
+| **Build** | `build` | Execute the plan in a **Sandbox**; agent edits the repo under git conventions below | Issue-tracker locking semantics (delegated to **IssueTracker** + label contract), choosing sandbox backend |
+
+**Responsibility seams** (where one concern ends and another begins):
+
+- **Orchestrator** (`orchestrator.Orchestrator`, `Run`): Loads the **Issue** through **IssueTracker**, obtains a **Sandbox handle** from **SandboxProvider**, and builds the agent command via **AgentProvider**. Future completion-signal detection (see [AFK completion protocol](#afk-completion-protocol)) lives here—not in CLI or adapters.
+- **Git** (`git.Repository`, `WorktreePath()`): Local clone, branch, and worktree layout. Workflows and adapters call **Repository**; **Orchestrator** does not import concrete git commands.
+- **Sandbox** (`sandbox.SandboxProvider`): Creates the environment for an agent step; **Sandbox handle** lifetime is scoped to one **Run** step unless a workflow explicitly spans steps.
+- **Issue tracker** (`issue.IssueTracker`): `ReadIssue`, `Comment`, `AddLabel`, `RemoveLabel`. Category/state labels and `agent:in-progress` locking are expressed only through this interface.
+
+**Lifecycle phase** (`lifecycle.Phase`) names coarse run stages (`start`, `triage`, `complete`) for future state tracking; workflow kind (`triage` / `plan` / `build`) names which AFK workflow is executing.
+
+## Git conventions
+
+One open **Issue** maps to one agent branch and one dedicated worktree:
+
+| Convention | Value |
+|------------|-------|
+| Branch name | `agent/issue-<N>-<short-title>` (`<N>` = issue number; `<short-title>` = kebab-case slug from the title) |
+| Worktree root | `.agent/worktrees/` (under the target repo; path surfaced by `git.Repository.WorktreePath()`) |
+
+**Run lifecycle:**
+
+1. Record base `HEAD` on the default branch before the agent run starts.
+2. Create or reuse the branch and worktree for that issue.
+3. On failure: leave a dirty worktree in place so a human or a retry can inspect or continue.
+4. On success: a clean worktree may be removed; policy is adapter/workflow-specific.
+
+Implementing worktrees and branch helpers is out of scope for this document; see the git adapter backlog. These strings are the canonical contract for downstream adapters and automation.
+
+## AFK completion protocol
+
+An AFK agent signals successful completion by emitting this exact token in its stdout stream:
+
+```text
+<promise>COMPLETE</promise>
+```
+
+**Orchestrator** treats this as the authoritative done signal for a workflow step. It is distinct from:
+
+- Process exit code (agent may exit before or after the signal),
+- Idle timeout (orchestrator may stop waiting without a completion signal),
+- A terminal **Agent event** with kind `result` (normalized outcome, not the completion contract).
+
+Adapters parse the raw stream; **Orchestrator** decides when a **Run** is complete based on this signal.
+
+## GitHub label contract
+
+Label strings below are the canonical triage and agent-locking vocabulary. Creating missing labels in the GitHub repo is a separate ops step; this section documents meaning and transition rules only.
+
+### Roles
+
+| Role | Cardinality | Labels |
+|------|-------------|--------|
+| **Category** | exactly one | `bug`, `enhancement` |
+| **State** | exactly one | `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix` |
+| **Lock** | optional (during implement/**Build** runs) | `agent:in-progress` |
+
+### Meaning
+
+- **Category** — what kind of work the issue is (`bug` vs `enhancement`). Set during or after **Triage**.
+- **State** — where the issue sits in the human/agent handoff:
+  - `needs-triage` — not yet assessed or needs re-triage,
+  - `needs-info` — blocked on reporter or maintainer input,
+  - `ready-for-agent` — approved for **Plan** / **Build** AFK workflows,
+  - `ready-for-human` — agent output needs maintainer review,
+  - `wontfix` — closed without implementation.
+- **Lock** — `agent:in-progress` while an agent **Build** (or implement) run holds the issue; prevents concurrent agent runs on the same issue.
+
+### Transition rules
+
+- Every triaged issue carries **one category label and one state label** (lock is additive).
+- Typical flow: `needs-triage` → (`needs-info` \| `ready-for-agent` \| `wontfix`); `needs-info` → `needs-triage` when the reporter replies with requested information.
+- Adding `agent:in-progress` should accompany removing competing lock semantics; remove it when the run finishes (success, failure, or cancel).
+- Maintainers may override labels manually; automation should prefer these strings.
+
+**IssueTracker** implements add/remove; workflows must not hard-code GitHub API details.
+
+## Maintainer sign-off (HITL gate)
+
+The pipeline boundaries, git conventions, completion signal, and label strings in this document are **provisional** until a maintainer comments approval on [issue #2](https://github.com/harsh-m-patil/oss-triage-agent/issues/2).
+
+Until sign-off:
+
+- Downstream issues (e.g. GitHub **IssueTracker** adapter, automated triage) should treat this file as the draft contract but must not assume labels already exist on the repo.
+- After sign-off, `CONTEXT.md` is the single source of truth; other docs and adapters should reference it rather than duplicating label lists.
+
 ## Package map
 
 | Package | Role |
@@ -169,7 +263,10 @@ _Avoid_: status, step.
 - One **Run** takes **Run input**, uses **IssueTracker** to load an **Issue**, **SandboxProvider** to obtain a **Sandbox handle**, and **AgentProvider** to build the agent command.
 - **AgentProvider** turns stream lines into **Agent events** tagged by **Event kind**.
 - **Sandbox handle** reports **Sandbox kind** until **Close**.
-- **Workflow kind** (`triage` / `plan` / `build`) maps to CLI subcommands; root command with an **Issue ID** (flag or positional) shortcuts to **Triage**.
+- **Workflow kind** (`triage` / `plan` / `build`) maps to CLI subcommands; root command with an **Issue ID** (flag or positional) shortcuts to **Triage**. See [AFK pipeline boundaries](#afk-pipeline-boundaries) for stage ownership.
+- **Repository** supplies `agent/issue-<N>-<short-title>` branches and `.agent/worktrees/` paths per [Git conventions](#git-conventions).
+- **IssueTracker** applies the [GitHub label contract](#github-label-contract); `agent:in-progress` is the lock during **Build** runs.
+- **Orchestrator** will treat `<promise>COMPLETE</promise>` as the done signal per [AFK completion protocol](#afk-completion-protocol).
 - **Fakes** implement the same interfaces as future production **Adapters**; contract tests prove **Orchestrator** needs no concrete backends.
 
 ## Example dialogue
@@ -182,6 +279,12 @@ _Avoid_: status, step.
 >
 > **Dev:** "Can I run `oss-triage-agent 42`?"
 > **Maintainer:** "Yes — positional **Issue ID** routes to **Triage** the same as `--issue 42`, via `resolveIssue`."
+>
+> **Dev:** "When is an AFK run actually done?"
+> **Maintainer:** "When the agent stream emits `<promise>COMPLETE</promise>`. **Orchestrator** watches for that—not just process exit."
+>
+> **Dev:** "What labels should triage set?"
+> **Maintainer:** "One category (`bug` or `enhancement`) and one state (e.g. `ready-for-agent`). Full list is in the **GitHub label contract**; maintainer sign-off on issue #2 makes it canonical."
 
 ## Flagged ambiguities
 
