@@ -2,8 +2,10 @@ package nosandbox_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -172,5 +174,44 @@ func TestHandle_Exec_invokesStdoutCallbackWhileProcessRuns(t *testing.T) {
 
 	if err := <-done; err != nil {
 		t.Fatalf("Exec: %v", err)
+	}
+}
+
+func TestHandle_Exec_streamsStdoutLineLongerThanScannerDefaultLimit(t *testing.T) {
+	t.Parallel()
+
+	const longLineBytes = 70 * 1024 // exceeds bufio.Scanner default max token (64KiB)
+
+	p := nosandbox.NewProvider()
+	handle, err := p.Create(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	defer handle.Close()
+
+	var stdout []string
+	err = handle.Exec(
+		context.Background(),
+		"sh",
+		[]string{"-c", fmt.Sprintf(
+			`line=$(head -c %d /dev/zero | tr '\0' 'x'); printf '%%s\n' "$line"; echo trailer`,
+			longLineBytes,
+		)},
+		func(line string) { stdout = append(stdout, line) },
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+
+	wantLong := strings.Repeat("x", longLineBytes)
+	if len(stdout) != 2 {
+		t.Fatalf("stdout lines = %d, want 2", len(stdout))
+	}
+	if stdout[0] != wantLong {
+		t.Fatalf("first line length = %d, want %d", len(stdout[0]), longLineBytes)
+	}
+	if stdout[1] != "trailer" {
+		t.Fatalf("second line = %q, want trailer", stdout[1])
 	}
 }

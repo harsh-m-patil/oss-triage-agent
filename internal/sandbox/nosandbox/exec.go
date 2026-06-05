@@ -3,6 +3,7 @@ package nosandbox
 import (
 	"bufio"
 	"context"
+	"errors"
 	"io"
 	"os/exec"
 	"sync"
@@ -26,28 +27,57 @@ func runCommand(ctx context.Context, dir, command string, args []string, onStdou
 	}
 
 	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var streamErr error
+	recordStreamErr := func(err error) {
+		if err == nil {
+			return
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		if streamErr == nil {
+			streamErr = err
+		}
+	}
+
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		streamLines(stdout, onStdout)
+		recordStreamErr(streamLines(stdout, onStdout))
 	}()
 	go func() {
 		defer wg.Done()
-		streamLines(stderr, onStderr)
+		recordStreamErr(streamLines(stderr, onStderr))
 	}()
 
 	wg.Wait()
-	return cmd.Wait()
+	waitErr := cmd.Wait()
+	if streamErr != nil {
+		return errors.Join(streamErr, waitErr)
+	}
+	return waitErr
 }
 
-func streamLines(r io.Reader, onLine func(line string)) {
+func streamLines(r io.Reader, onLine func(line string)) error {
 	if onLine == nil {
-		io.Copy(io.Discard, r)
-		return
+		_, err := io.Copy(io.Discard, r)
+		return err
 	}
 
-	sc := bufio.NewScanner(r)
-	for sc.Scan() {
-		onLine(sc.Text())
+	br := bufio.NewReader(r)
+	for {
+		line, err := br.ReadString('\n')
+		if len(line) > 0 {
+			if line[len(line)-1] == '\n' {
+				line = line[:len(line)-1]
+			}
+			onLine(line)
+		}
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
 	}
 }
