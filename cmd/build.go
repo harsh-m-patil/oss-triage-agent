@@ -28,9 +28,8 @@ var buildCmd = &cobra.Command{
 }
 
 type buildOptions struct {
-	IssueID           string
-	IdleTimeout       time.Duration
-	CompletionTimeout time.Duration
+	IssueID     string
+	IdleTimeout time.Duration
 }
 
 type buildRuntimeOptions struct {
@@ -65,9 +64,8 @@ func runBuild(cmd *cobra.Command, args []string) error {
 
 	opts := buildRuntimeOptions{
 		buildOptions: buildOptions{
-			IssueID:           issueID,
-			IdleTimeout:       buildIdleTimeout,
-			CompletionTimeout: buildCompletionTimeout,
+			IssueID:     issueID,
+			IdleTimeout: buildIdleTimeout,
 		},
 		RepoPath:                   buildRepoPath,
 		Model:                      buildModel,
@@ -141,20 +139,18 @@ func runBuildWorkflow(ctx context.Context, deps buildWorkflowDeps, opts buildOpt
 	})
 	buildLogf(
 		deps.Log,
-		"starting agent %s in %s (idle timeout %s, completion timeout %s)",
+		"starting agent %s in %s (idle timeout %s)",
 		deps.Agent.Name(),
 		wt.Path,
 		opts.IdleTimeout,
-		opts.CompletionTimeout,
 	)
 	summary, err = o.Run(ctx, orchestrator.RunInput{
-		IssueID:           opts.IssueID,
-		Issue:             it,
-		Prompt:            deps.Prompt.ForIssue(*it),
-		Workspace:         wt.Path,
-		IdleTimeout:       opts.IdleTimeout,
-		CompletionTimeout: opts.CompletionTimeout,
-		Progress:          newBuildProgressLogger(deps.Log),
+		IssueID:     opts.IssueID,
+		Issue:       it,
+		Prompt:      deps.Prompt.ForIssue(*it),
+		Workspace:   wt.Path,
+		IdleTimeout: opts.IdleTimeout,
+		Progress:    newBuildProgressLogger(deps.Log),
 	})
 	buildLogf(
 		deps.Log,
@@ -225,6 +221,13 @@ func newBuildProgressLogger(w io.Writer) func(orchestrator.ProgressEvent) {
 			switch ev.Event.Kind {
 			case agent.EventSessionID:
 				buildLogf(w, "agent session: %s", ev.Event.SessionID)
+			case agent.EventText:
+				buildLogf(w, "agent text: %s", truncateForLog(singleLine(ev.Event.Text), 200))
+			case agent.EventResult:
+				if ev.Event.Result == nil {
+					return
+				}
+				buildLogf(w, "agent result: %s", truncateForLog(singleLine(ev.Event.Result.Output), 200))
 			case agent.EventToolCall:
 				if ev.Event.ToolCall == nil {
 					return
@@ -238,12 +241,6 @@ func newBuildProgressLogger(w io.Writer) func(orchestrator.ProgressEvent) {
 			}
 		case orchestrator.ProgressAgentStderr:
 			buildLogf(w, "agent stderr: %s", truncateForLog(singleLine(ev.StderrLine), 200))
-		case orchestrator.ProgressCompletionSignal:
-			if ev.CompletionTimeout > 0 {
-				buildLogf(w, "completion signal seen; waiting up to %s for process exit", ev.CompletionTimeout)
-				return
-			}
-			buildLogf(w, "completion signal seen")
 		case orchestrator.ProgressHeartbeat:
 			wait := ev.Wait.Round(time.Second)
 			if wait <= 0 {

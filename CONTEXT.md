@@ -185,19 +185,12 @@ Implementing worktrees and branch helpers is out of scope for this document; see
 
 ## AFK completion protocol
 
-An AFK agent signals successful completion by emitting this exact token in its stdout stream:
+**Orchestrator** treats a clean agent process exit as the authoritative done signal for a workflow step. It is distinct from:
 
-```text
-<promise>COMPLETE</promise>
-```
-
-**Orchestrator** treats this as the authoritative done signal for a workflow step. It is distinct from:
-
-- Process exit code (agent may exit before or after the signal),
-- Idle timeout (orchestrator may stop waiting without a completion signal),
+- Idle timeout (orchestrator may stop waiting if stdout goes quiet before the agent exits),
 - A terminal **Agent event** with kind `result` (normalized outcome, not the completion contract).
 
-Adapters parse the raw stream; **Orchestrator** decides when a **Run** is complete based on this signal.
+Adapters parse the raw stream; **Orchestrator** decides when a **Run** is complete based on process lifecycle plus timeout policy.
 
 ## GitHub label contract
 
@@ -233,7 +226,7 @@ Label strings below are the canonical triage and agent-locking vocabulary. Creat
 
 ## Maintainer sign-off (HITL gate)
 
-The pipeline boundaries, git conventions, completion signal, and label strings in this document are **provisional** until a maintainer comments approval on [issue #2](https://github.com/harsh-m-patil/oss-triage-agent/issues/2).
+The pipeline boundaries, git conventions, completion policy, and label strings in this document are **provisional** until a maintainer comments approval on [issue #2](https://github.com/harsh-m-patil/oss-triage-agent/issues/2).
 
 Until sign-off:
 
@@ -266,7 +259,7 @@ Until sign-off:
 - **Workflow kind** (`triage` / `plan` / `build`) maps to CLI subcommands; root command with an **Issue ID** (flag or positional) shortcuts to **Triage**. See [AFK pipeline boundaries](#afk-pipeline-boundaries) for stage ownership.
 - **Repository** supplies `agent/issue-<N>-<short-title>` branches and `.agent/worktrees/` paths per [Git conventions](#git-conventions).
 - **IssueTracker** applies the [GitHub label contract](#github-label-contract); `agent:in-progress` is the lock during **Build** runs.
-- **Orchestrator** will treat `<promise>COMPLETE</promise>` as the done signal per [AFK completion protocol](#afk-completion-protocol).
+- **Orchestrator** will treat a clean agent exit as the done signal per [AFK completion protocol](#afk-completion-protocol).
 - **Fakes** implement the same interfaces as future production **Adapters**; contract tests prove **Orchestrator** needs no concrete backends.
 
 ## Example dialogue
@@ -281,7 +274,7 @@ Until sign-off:
 > **Maintainer:** "Yes — positional **Issue ID** routes to **Triage** the same as `--issue 42`, via `resolveIssue`."
 >
 > **Dev:** "When is an AFK run actually done?"
-> **Maintainer:** "When the agent stream emits `<promise>COMPLETE</promise>`. **Orchestrator** watches for that—not just process exit."
+> **Maintainer:** "When the agent process exits cleanly before idle timeout. **Orchestrator** watches process lifecycle, not a magic stdout token."
 >
 > **Dev:** "What labels should triage set?"
 > **Maintainer:** "One category (`bug` or `enhancement`) and one state (e.g. `ready-for-agent`). Full list is in the **GitHub label contract**; maintainer sign-off on issue #2 makes it canonical."

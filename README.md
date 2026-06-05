@@ -12,7 +12,7 @@ Foundation is in place with working provider adapters and an orchestrator **Run*
 |------|--------|
 | Provider interfaces + fakes | Done |
 | Orchestrator **Run** (issue load, sandbox, agent exec) | Done |
-| AFK completion signal (`<promise>COMPLETE</promise>`) + idle/completion timeouts | Done |
+| Exit-based run completion + idle timeout | Done |
 | Managed git worktrees (`internal/git/local`) | Done |
 | OpenCode agent provider (`internal/agent/opencode`) | Done |
 | Host sandbox (`internal/sandbox/nosandbox`) | Done |
@@ -67,7 +67,7 @@ Useful flags:
 - `--repo` selects the target git repository root. The command reads `remote.origin.url` from that repo to resolve the GitHub owner/repo.
 - `--sandbox docker|nosandbox` chooses the execution environment. `docker` is the default; `nosandbox` is the local-development convenience mode.
 - `--model`, `--variant`, `--agent`, and `--dangerously-skip-permissions` mirror `agent run`.
-- `--idle-timeout` and `--completion-timeout` control orchestrator timeout behavior.
+- `--idle-timeout` controls how long the orchestrator waits without stdout before cancelling the run.
 
 `build` records the repo base HEAD, prepares an issue worktree under `.agent/worktrees/`, locks the issue with `agent:in-progress`, runs the agent, posts a success or failure comment, and always unlocks the issue on exit.
 
@@ -118,22 +118,16 @@ oss-triage-agent git remove --repo /path/to/target-repo --number 3 --title "My i
 
 On failure, dirty worktrees are left in place. On success, workflows may remove a **clean** worktree when `config.Config.Git.RemoveCleanWorktreeOnSuccess` is enabled.
 
-## AFK completion protocol
+## Run completion
 
-An agent signals successful completion by emitting this exact token in stdout:
-
-```text
-<promise>COMPLETE</promise>
-```
-
-The orchestrator treats this as the authoritative done signal (distinct from process exit code). Configure `RunInput.IdleTimeout` to cancel when no stdout arrives before the signal, and `RunInput.CompletionTimeout` to bound the grace period after the signal is seen. See [CONTEXT.md](CONTEXT.md#afk-completion-protocol) for the full contract.
+The orchestrator treats a clean agent process exit as successful completion. `RunInput.IdleTimeout` remains the guardrail for runs that stop making progress while still producing no final exit.
 
 ## Package layout
 
 | Path | Role |
 |------|------|
 | `cmd/` | Cobra CLI (`triage`, `plan`, `build`, `agent`, debug `git`) |
-| `internal/orchestrator` | Coordinates a run via injected **Deps**; completion signal and timeouts |
+| `internal/orchestrator` | Coordinates a run via injected **Deps**; exit handling and idle timeout |
 | `internal/agent` | **AgentProvider**, stream **Agent events** |
 | `internal/agent/opencode` | OpenCode CLI adapter (JSONL → normalized events) |
 | `internal/sandbox` | **SandboxProvider**, sandbox kinds |
@@ -160,10 +154,9 @@ o := orchestrator.New(orchestrator.Deps{
 })
 
 summary, err := o.Run(ctx, orchestrator.RunInput{
-    IssueID:           "42",
-    Workspace:         "/path/to/repo",
-    IdleTimeout:       5 * time.Minute,
-    CompletionTimeout: 30 * time.Second,
+    IssueID:     "42",
+    Workspace:   "/path/to/repo",
+    IdleTimeout: 5 * time.Minute,
 })
 // summary.Completed, summary.Success, summary.Events, summary.TimeoutKind
 ```

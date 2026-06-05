@@ -20,8 +20,7 @@ import (
 const (
 	buildSandboxDocker    = "docker"
 	buildSandboxNoSandbox = "nosandbox"
-	defaultBuildIdleTimeout       = 5 * time.Minute
-	defaultBuildCompletionTimeout = 30 * time.Second
+	defaultBuildIdleTimeout = 5 * time.Minute
 )
 
 var (
@@ -32,7 +31,6 @@ var (
 	buildSandboxMode                string
 	buildDangerouslySkipPermissions bool
 	buildIdleTimeout                time.Duration
-	buildCompletionTimeout          time.Duration
 )
 
 func init() {
@@ -43,7 +41,6 @@ func init() {
 	buildCmd.Flags().StringVar(&buildSandboxMode, "sandbox", buildSandboxDocker, "Sandbox mode: docker or nosandbox")
 	buildCmd.Flags().BoolVar(&buildDangerouslySkipPermissions, "dangerously-skip-permissions", false, "OpenCode --dangerously-skip-permissions flag")
 	buildCmd.Flags().DurationVar(&buildIdleTimeout, "idle-timeout", defaultBuildIdleTimeout, "Maximum idle time before the run is cancelled")
-	buildCmd.Flags().DurationVar(&buildCompletionTimeout, "completion-timeout", defaultBuildCompletionTimeout, "Grace period after the completion signal is seen")
 }
 
 func resolveBuildWorkflowDeps(opts buildRuntimeOptions) (buildWorkflowDeps, error) {
