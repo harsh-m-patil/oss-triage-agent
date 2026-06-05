@@ -2,6 +2,7 @@ package orchestrator_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -228,6 +229,33 @@ func TestRun_succeedsWhenCompletionTimeoutExpiresAfterSignalDespiteHungProcess(t
 	}
 }
 
+func TestRun_includesStderrInAgentExecError(t *testing.T) {
+	t.Parallel()
+
+	workspace := t.TempDir()
+	tracker := issuefake.NewTracker(map[string]issuefake.Issue{
+		"1": {Number: 1, Body: "fail loudly"},
+	})
+	o := orchestrator.New(orchestrator.Deps{
+		Agent:   &stderrFailureFixtureAgent{},
+		Sandbox: nosandbox.NewProvider(),
+		Issues:  tracker,
+	})
+
+	_, err := o.Run(context.Background(), orchestrator.RunInput{
+		IssueID:   "1",
+		Workspace: workspace,
+	})
+	if err == nil {
+		t.Fatal("Run: want error, got nil")
+	}
+	for _, want := range []string{"exit status 17", "permission denied", "opencode"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("err = %q, want substring %q", err, want)
+		}
+	}
+}
+
 type hangAfterSignalFixtureAgent struct{}
 
 func (hangAfterSignalFixtureAgent) Name() string { return "hang-after-signal" }
@@ -242,5 +270,22 @@ func (hangAfterSignalFixtureAgent) BuildCommand(string) []string {
 }
 
 func (hangAfterSignalFixtureAgent) ParseStreamLine(string) ([]agent.AgentEvent, error) {
+	return nil, nil
+}
+
+type stderrFailureFixtureAgent struct{}
+
+func (stderrFailureFixtureAgent) Name() string { return "opencode" }
+
+func (stderrFailureFixtureAgent) Env() map[string]string { return nil }
+
+func (stderrFailureFixtureAgent) BuildCommand(string) []string {
+	return []string{
+		"sh", "-c",
+		`echo 'permission denied' >&2; exit 17`,
+	}
+}
+
+func (stderrFailureFixtureAgent) ParseStreamLine(string) ([]agent.AgentEvent, error) {
 	return nil, nil
 }

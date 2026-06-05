@@ -1,13 +1,16 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/harsh-m-patil/oss-triage-agent/internal/agent"
+	opencodeagent "github.com/harsh-m-patil/oss-triage-agent/internal/agent/opencode"
 	"github.com/harsh-m-patil/oss-triage-agent/internal/git"
 	issuepkg "github.com/harsh-m-patil/oss-triage-agent/internal/issue"
 	"github.com/harsh-m-patil/oss-triage-agent/internal/orchestrator"
@@ -119,6 +122,95 @@ func TestRunBuildWorkflow_commentsAndUnlocksOnFailure(t *testing.T) {
 	}
 	if !strings.Contains(tracker.comments[0], "sandbox exploded") {
 		t.Fatalf("comment = %q, want failure details", tracker.comments[0])
+	}
+}
+
+func TestRunBuildWorkflow_includesAgentStderrInFailureComment(t *testing.T) {
+	t.Parallel()
+
+	tracker := &recordingIssueTracker{
+		issue: issuepkg.Issue{
+			Number: 9,
+			Title:  "Wire build workflow",
+			Body:   "Implement the end-to-end build command.",
+		},
+	}
+	repo := &recordingRepository{
+		worktree: git.Worktree{
+			Path:   t.TempDir(),
+			Branch: "agent/issue-9-wire-build-workflow",
+		},
+	}
+
+	_, err := runBuildWorkflow(context.Background(), buildWorkflowDeps{
+		Issues:  tracker,
+		Repo:    repo,
+		Sandbox: nosandbox.NewProvider(),
+		Agent:   stderrFailingBuildAgent{},
+		Prompt:  prompt.Builder{},
+	}, buildOptions{IssueID: "9"})
+	if err == nil {
+		t.Fatal("runBuildWorkflow: want error, got nil")
+	}
+	if len(tracker.comments) != 1 {
+		t.Fatalf("comments = %v, want one failure comment", tracker.comments)
+	}
+	for _, want := range []string{"stderr tail", "permission denied", "opencode"} {
+		if !strings.Contains(tracker.comments[0], want) {
+			t.Fatalf("comment missing %q:\n%s", want, tracker.comments[0])
+		}
+	}
+}
+
+func TestRunBuildWorkflow_logsPhasesAndAgentProgress(t *testing.T) {
+	t.Parallel()
+
+	tracker := &recordingIssueTracker{
+		issue: issuepkg.Issue{
+			Number: 9,
+			Title:  "Wire build workflow",
+			Body:   "Implement the end-to-end build command.",
+		},
+	}
+	repo := &recordingRepository{
+		worktree: git.Worktree{
+			Path:   t.TempDir(),
+			Branch: "agent/issue-9-wire-build-workflow",
+		},
+	}
+	var logs bytes.Buffer
+
+	_, err := runBuildWorkflow(context.Background(), buildWorkflowDeps{
+		Issues:  tracker,
+		Repo:    repo,
+		Sandbox: nosandbox.NewProvider(),
+		Agent:   loggingBuildAgent{},
+		Prompt:  prompt.Builder{},
+		Log:     &logs,
+	}, buildOptions{IssueID: "9", CompletionTimeout: 30 * time.Second})
+	if err != nil {
+		t.Fatalf("runBuildWorkflow: %v", err)
+	}
+
+	for _, want := range []string{
+		"[build] reading issue 9",
+		"[build] locking issue #9",
+		"[build] recording base HEAD",
+		"[build] preparing worktree agent/issue-9-wire-build-workflow",
+		"[build] worktree ready:",
+		"[build] starting agent recording-log-agent in",
+		"[build] agent command: sh -c",
+		"[build] agent session: sess_123",
+		"[build] agent tool: bash npm test",
+		"[build] agent stderr: permission denied",
+		"[build] completion signal seen; waiting up to 30s for process exit",
+		"[build] agent finished: completed=true success=true",
+		"[build] posting issue comment for #9",
+		"[build] unlocking issue #9",
+	} {
+		if !strings.Contains(logs.String(), want) {
+			t.Fatalf("logs missing %q:\n%s", want, logs.String())
+		}
 	}
 }
 
@@ -258,10 +350,49 @@ func (h failingSandboxHandle) Exec(context.Context, string, []string, map[string
 
 func (h failingSandboxHandle) Close() error { return nil }
 
+type stderrFailingBuildAgent struct{}
+
+func (stderrFailingBuildAgent) Name() string { return "opencode" }
+
+func (stderrFailingBuildAgent) Env() map[string]string { return nil }
+
+func (stderrFailingBuildAgent) BuildCommand(string) []string {
+	return []string{
+		"sh", "-c",
+		`echo 'permission denied' >&2; exit 17`,
+	}
+}
+
+func (stderrFailingBuildAgent) ParseStreamLine(string) ([]agent.AgentEvent, error) {
+	return nil, nil
+}
+
+type loggingBuildAgent struct{}
+
+func (loggingBuildAgent) Name() string { return "recording-log-agent" }
+
+func (loggingBuildAgent) Env() map[string]string { return nil }
+
+func (loggingBuildAgent) BuildCommand(string) []string {
+	return []string{
+		"sh", "-c",
+		`printf '%s\n' '{"type":"step_start","sessionID":"sess_123"}'; ` +
+			`printf '%s\n' '{"type":"tool_use","part":{"type":"tool","tool":"bash","state":{"status":"completed","input":{"command":"npm test"}}}}'; ` +
+			`echo 'permission denied' >&2; ` +
+			`printf '%s\n' '` + orchestrator.CompletionSignal + `'`,
+	}
+}
+
+func (loggingBuildAgent) ParseStreamLine(line string) ([]agent.AgentEvent, error) {
+	return opencodeagent.NewProvider("opencode/test", opencodeagent.Options{}).ParseStreamLine(line)
+}
+
 var (
 	_ issuepkg.IssueTracker = (*recordingIssueTracker)(nil)
 	_ git.Repository        = (*recordingRepository)(nil)
 	_ agent.AgentProvider   = (*recordingBuildAgent)(nil)
+	_ agent.AgentProvider   = stderrFailingBuildAgent{}
+	_ agent.AgentProvider   = loggingBuildAgent{}
 	_ sandbox.SandboxProvider = nosandbox.NewProvider()
 	_ sandbox.SandboxProvider = failingSandboxProvider{}
 )

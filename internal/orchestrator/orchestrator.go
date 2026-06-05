@@ -26,6 +26,7 @@ type RunInput struct {
 	Workspace         string        `json:"workspace"`
 	IdleTimeout       time.Duration `json:"idle_timeout,omitempty"`
 	CompletionTimeout time.Duration `json:"completion_timeout,omitempty"`
+	Progress          func(ProgressEvent) `json:"-"`
 }
 
 // RunSummary captures observable outcomes from a triage run.
@@ -41,6 +42,29 @@ type RunSummary struct {
 	TimeoutKind TimeoutKind `json:"timeout_kind,omitempty"`
 	// Events holds normalized agent stream events from stdout lines.
 	Events []agent.AgentEvent `json:"events,omitempty"`
+}
+
+// ProgressKind identifies a live orchestrator progress update.
+type ProgressKind string
+
+const (
+	ProgressAgentStart      ProgressKind = "agent_start"
+	ProgressAgentEvent      ProgressKind = "agent_event"
+	ProgressAgentStderr     ProgressKind = "agent_stderr"
+	ProgressCompletionSignal ProgressKind = "completion_signal"
+	ProgressHeartbeat       ProgressKind = "heartbeat"
+)
+
+// ProgressEvent is a live update emitted while an orchestrator run is active.
+type ProgressEvent struct {
+	Kind              ProgressKind
+	Command           string
+	Args              []string
+	Event             *agent.AgentEvent
+	StderrLine        string
+	Wait              time.Duration
+	Completed         bool
+	CompletionTimeout time.Duration
 }
 
 // Orchestrator coordinates AFK workflows using provider interfaces only.
@@ -93,6 +117,7 @@ func (o *Orchestrator) Run(ctx context.Context, in RunInput) (RunSummary, error)
 		o.deps.Agent.Env(),
 		in.IdleTimeout,
 		in.CompletionTimeout,
+		in.Progress,
 		&summary,
 	)
 	return summary, err

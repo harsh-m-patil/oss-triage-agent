@@ -82,12 +82,14 @@ func TestRunBuild_passesConfiguredFlagsToResolverAndWorkflow(t *testing.T) {
 
 	var gotResolve buildRuntimeOptions
 	var gotRun buildOptions
+	var gotLogSet bool
 	buildDepsResolver = func(opts buildRuntimeOptions) (buildWorkflowDeps, error) {
 		gotResolve = opts
 		return buildWorkflowDeps{}, nil
 	}
-	buildWorkflowRunner = func(_ context.Context, _ buildWorkflowDeps, opts buildOptions) (orchestrator.RunSummary, error) {
+	buildWorkflowRunner = func(_ context.Context, deps buildWorkflowDeps, opts buildOptions) (orchestrator.RunSummary, error) {
 		gotRun = opts
+		gotLogSet = deps.Log != nil
 		return orchestrator.RunSummary{
 			IssueNumber: 9,
 			AgentName:   "opencode",
@@ -114,6 +116,9 @@ func TestRunBuild_passesConfiguredFlagsToResolverAndWorkflow(t *testing.T) {
 	}
 	if gotRun.IssueID != "9" || gotRun.IdleTimeout != 2*time.Minute || gotRun.CompletionTimeout != 45*time.Second {
 		t.Fatalf("runner opts = %+v", gotRun)
+	}
+	if !gotLogSet {
+		t.Fatal("runner deps.Log was nil, want stderr writer")
 	}
 	if !strings.Contains(out.String(), "build completed for issue #9") {
 		t.Fatalf("stdout = %q", out.String())
