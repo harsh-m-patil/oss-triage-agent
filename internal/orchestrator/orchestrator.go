@@ -20,13 +20,12 @@ type Deps struct {
 
 // RunInput identifies the issue and workspace for a triage run.
 type RunInput struct {
-	IssueID           string        `json:"issue_id"`
-	Issue             *issue.Issue  `json:"-"`
-	Prompt            string        `json:"prompt,omitempty"`
-	Workspace         string        `json:"workspace"`
-	IdleTimeout       time.Duration `json:"idle_timeout,omitempty"`
-	CompletionTimeout time.Duration `json:"completion_timeout,omitempty"`
-	Progress          func(ProgressEvent) `json:"-"`
+	IssueID     string              `json:"issue_id"`
+	Issue       *issue.Issue        `json:"-"`
+	Prompt      string              `json:"prompt,omitempty"`
+	Workspace   string              `json:"workspace"`
+	IdleTimeout time.Duration       `json:"idle_timeout,omitempty"`
+	Progress    func(ProgressEvent) `json:"-"`
 }
 
 // RunSummary captures observable outcomes from a triage run.
@@ -34,9 +33,9 @@ type RunSummary struct {
 	IssueNumber int                 `json:"issue_number"`
 	AgentName   string              `json:"agent_name"`
 	SandboxKind sandbox.SandboxKind `json:"sandbox_kind"`
-	// Completed is true when CompletionSignal appeared in agent stdout.
+	// Completed is true when the agent process exits cleanly.
 	Completed bool `json:"completed"`
-	// Success is true when the run finished per AFK protocol (signal seen).
+	// Success is true when the run finished without timeout or process error.
 	Success bool `json:"success"`
 	// TimeoutKind is set when a configured timeout ended the run unsuccessfully.
 	TimeoutKind TimeoutKind `json:"timeout_kind,omitempty"`
@@ -48,23 +47,21 @@ type RunSummary struct {
 type ProgressKind string
 
 const (
-	ProgressAgentStart      ProgressKind = "agent_start"
-	ProgressAgentEvent      ProgressKind = "agent_event"
-	ProgressAgentStderr     ProgressKind = "agent_stderr"
-	ProgressCompletionSignal ProgressKind = "completion_signal"
-	ProgressHeartbeat       ProgressKind = "heartbeat"
+	ProgressAgentStart  ProgressKind = "agent_start"
+	ProgressAgentEvent  ProgressKind = "agent_event"
+	ProgressAgentStderr ProgressKind = "agent_stderr"
+	ProgressHeartbeat   ProgressKind = "heartbeat"
 )
 
 // ProgressEvent is a live update emitted while an orchestrator run is active.
 type ProgressEvent struct {
-	Kind              ProgressKind
-	Command           string
-	Args              []string
-	Event             *agent.AgentEvent
-	StderrLine        string
-	Wait              time.Duration
-	Completed         bool
-	CompletionTimeout time.Duration
+	Kind       ProgressKind
+	Command    string
+	Args       []string
+	Event      *agent.AgentEvent
+	StderrLine string
+	Wait       time.Duration
+	Completed  bool
 }
 
 // Orchestrator coordinates AFK workflows using provider interfaces only.
@@ -116,7 +113,6 @@ func (o *Orchestrator) Run(ctx context.Context, in RunInput) (RunSummary, error)
 		argv[1:],
 		o.deps.Agent.Env(),
 		in.IdleTimeout,
-		in.CompletionTimeout,
 		in.Progress,
 		&summary,
 	)

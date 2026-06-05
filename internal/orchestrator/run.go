@@ -12,19 +12,16 @@ import (
 	"github.com/harsh-m-patil/oss-triage-agent/internal/sandbox"
 )
 
-// CompletionSignal is the authoritative AFK success token in agent stdout.
-const CompletionSignal = "<promise>COMPLETE</promise>"
-
 // TimeoutKind identifies which orchestrator timeout ended a run.
 type TimeoutKind string
 
 const (
-	// TimeoutIdle means no stdout arrived within IdleTimeout before the completion signal.
+	// TimeoutIdle means no stdout arrived within IdleTimeout before the agent exited.
 	TimeoutIdle TimeoutKind = "idle"
 )
 
-// ErrIdleTimeout is returned when IdleTimeout expires before CompletionSignal.
-var ErrIdleTimeout = errors.New("idle timeout waiting for completion signal")
+// ErrIdleTimeout is returned when IdleTimeout expires before the agent exits.
+var ErrIdleTimeout = errors.New("idle timeout waiting for agent exit")
 
 var progressHeartbeatInterval = 30 * time.Second
 
@@ -34,7 +31,7 @@ func (o *Orchestrator) runAgent(
 	command string,
 	args []string,
 	env map[string]string,
-	idleTimeout, completionTimeout time.Duration,
+	idleTimeout time.Duration,
 	progress func(ProgressEvent),
 	summary *RunSummary,
 ) error {
@@ -43,11 +40,10 @@ func (o *Orchestrator) runAgent(
 
 	var mu sync.Mutex
 	var (
-		sawComplete bool
-		events      []agent.AgentEvent
-		parseErr    error
-		stderrTail  []string
-		lastStdout  = time.Now()
+		events     []agent.AgentEvent
+		parseErr   error
+		stderrTail []string
+		lastStdout = time.Now()
 	)
 
 	emit := func(ev ProgressEvent) {
@@ -63,7 +59,6 @@ func (o *Orchestrator) runAgent(
 	})
 
 	resetIdle := func() {}
-	stopIdle := func() {}
 	var idleC <-chan time.Time
 	if idleTimeout > 0 {
 		idleTimer := time.NewTimer(idleTimeout)
@@ -77,14 +72,6 @@ func (o *Orchestrator) runAgent(
 			}
 			idleTimer.Reset(idleTimeout)
 		}
-		stopIdle = func() {
-			if !idleTimer.Stop() {
-				select {
-				case <-idleTimer.C:
-				default:
-				}
-			}
-		}
 		defer idleTimer.Stop()
 	}
 
@@ -95,25 +82,8 @@ func (o *Orchestrator) runAgent(
 		defer ticker.Stop()
 	}
 
-	completionDone := make(chan struct{}, 1)
-	var completionTimer *time.Timer
-	startCompletionTimer := func() {
-		if completionTimeout <= 0 || completionTimer != nil {
-			return
-		}
-		completionTimer = time.AfterFunc(completionTimeout, func() {
-			select {
-			case completionDone <- struct{}{}:
-			default:
-			}
-		})
-	}
-
 	onStdout := func(line string) {
-		var (
-			emitEvents      []agent.AgentEvent
-			emitCompletion  bool
-		)
+		var emitEvents []agent.AgentEvent
 		mu.Lock()
 		if parseErr != nil {
 			mu.Unlock()
@@ -122,13 +92,6 @@ func (o *Orchestrator) runAgent(
 
 		lastStdout = time.Now()
 		resetIdle()
-
-		if strings.Contains(line, CompletionSignal) {
-			sawComplete = true
-			stopIdle()
-			startCompletionTimer()
-			emitCompletion = true
-		}
 
 		evts, err := o.deps.Agent.ParseStreamLine(line)
 		if err != nil {
@@ -140,13 +103,6 @@ func (o *Orchestrator) runAgent(
 		events = append(events, evts...)
 		emitEvents = append(emitEvents, evts...)
 		mu.Unlock()
-
-		if emitCompletion {
-			emit(ProgressEvent{
-				Kind:              ProgressCompletionSignal,
-				CompletionTimeout: completionTimeout,
-			})
-		}
 		for i := range emitEvents {
 			ev := emitEvents[i]
 			emit(ProgressEvent{
@@ -177,26 +133,20 @@ func (o *Orchestrator) runAgent(
 			mu.Lock()
 			defer mu.Unlock()
 			summary.Events = events
-			summary.Completed = sawComplete
 			if parseErr != nil {
 				return parseErr
 			}
-			if sawComplete {
+			if err == nil {
+				summary.Completed = true
 				summary.Success = true
 				return nil
 			}
 			if err != nil && !errors.Is(err, context.Canceled) {
 				return formatAgentExecError(o.deps.Agent.Name(), command, err, stderrTail)
 			}
-			return fmt.Errorf("process exited without %s", CompletionSignal)
+			return fmt.Errorf("process exited before agent completed")
 
 		case <-idleC:
-			mu.Lock()
-			complete := sawComplete
-			mu.Unlock()
-			if complete {
-				continue
-			}
 			cancel()
 			<-execDone
 			mu.Lock()
@@ -206,23 +156,13 @@ func (o *Orchestrator) runAgent(
 			mu.Unlock()
 			return ErrIdleTimeout
 
-		case <-completionDone:
-			cancel()
-			mu.Lock()
-			summary.Events = events
-			summary.Completed = sawComplete
-			summary.Success = sawComplete
-			mu.Unlock()
-			return nil
-
 		case <-heartbeatC:
 			mu.Lock()
-			complete := sawComplete
 			wait := time.Since(lastStdout)
 			mu.Unlock()
 			emit(ProgressEvent{
 				Kind:      ProgressHeartbeat,
-				Completed: complete,
+				Completed: false,
 				Wait:      wait,
 			})
 		}

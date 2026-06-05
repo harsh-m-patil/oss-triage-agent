@@ -77,7 +77,6 @@ func TestRunBuild_passesConfiguredFlagsToResolverAndWorkflow(t *testing.T) {
 	buildSandboxMode = buildSandboxNoSandbox
 	buildDangerouslySkipPermissions = true
 	buildIdleTimeout = 2 * time.Minute
-	buildCompletionTimeout = 45 * time.Second
 	issue = ""
 
 	var gotResolve buildRuntimeOptions
@@ -114,7 +113,7 @@ func TestRunBuild_passesConfiguredFlagsToResolverAndWorkflow(t *testing.T) {
 	if gotResolve.SandboxMode != buildSandboxNoSandbox || !gotResolve.DangerouslySkipPermissions {
 		t.Fatalf("resolver opts = %+v", gotResolve)
 	}
-	if gotRun.IssueID != "9" || gotRun.IdleTimeout != 2*time.Minute || gotRun.CompletionTimeout != 45*time.Second {
+	if gotRun.IssueID != "9" || gotRun.IdleTimeout != 2*time.Minute {
 		t.Fatalf("runner opts = %+v", gotRun)
 	}
 	if !gotLogSet {
@@ -133,7 +132,6 @@ func snapshotBuildGlobals() func() {
 	prevSandboxMode := buildSandboxMode
 	prevSkipPermissions := buildDangerouslySkipPermissions
 	prevIdleTimeout := buildIdleTimeout
-	prevCompletionTimeout := buildCompletionTimeout
 	prevIssue := issue
 	prevResolver := buildDepsResolver
 	prevRunner := buildWorkflowRunner
@@ -146,7 +144,6 @@ func snapshotBuildGlobals() func() {
 		buildSandboxMode = prevSandboxMode
 		buildDangerouslySkipPermissions = prevSkipPermissions
 		buildIdleTimeout = prevIdleTimeout
-		buildCompletionTimeout = prevCompletionTimeout
 		issue = prevIssue
 		buildDepsResolver = prevResolver
 		buildWorkflowRunner = prevRunner

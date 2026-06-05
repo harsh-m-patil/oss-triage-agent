@@ -7,13 +7,11 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/harsh-m-patil/oss-triage-agent/internal/agent"
 	opencodeagent "github.com/harsh-m-patil/oss-triage-agent/internal/agent/opencode"
 	"github.com/harsh-m-patil/oss-triage-agent/internal/git"
 	issuepkg "github.com/harsh-m-patil/oss-triage-agent/internal/issue"
-	"github.com/harsh-m-patil/oss-triage-agent/internal/orchestrator"
 	"github.com/harsh-m-patil/oss-triage-agent/internal/prompt"
 	"github.com/harsh-m-patil/oss-triage-agent/internal/sandbox"
 	"github.com/harsh-m-patil/oss-triage-agent/internal/sandbox/nosandbox"
@@ -73,7 +71,6 @@ func TestRunBuildWorkflow_locksRunsCommentsAndUnlocks(t *testing.T) {
 	for _, want := range []string{
 		"Wire build workflow",
 		"Implement the end-to-end build command.",
-		orchestrator.CompletionSignal,
 	} {
 		if !strings.Contains(agentProvider.prompt, want) {
 			t.Fatalf("prompt missing %q:\n%s", want, agentProvider.prompt)
@@ -187,7 +184,7 @@ func TestRunBuildWorkflow_logsPhasesAndAgentProgress(t *testing.T) {
 		Agent:   loggingBuildAgent{},
 		Prompt:  prompt.Builder{},
 		Log:     &logs,
-	}, buildOptions{IssueID: "9", CompletionTimeout: 30 * time.Second})
+	}, buildOptions{IssueID: "9"})
 	if err != nil {
 		t.Fatalf("runBuildWorkflow: %v", err)
 	}
@@ -201,9 +198,10 @@ func TestRunBuildWorkflow_logsPhasesAndAgentProgress(t *testing.T) {
 		"[build] starting agent recording-log-agent in",
 		"[build] agent command: sh -c",
 		"[build] agent session: sess_123",
+		"[build] agent text: thinking through slog migration",
+		"[build] agent result: thinking through slog migration",
 		"[build] agent tool: bash npm test",
 		"[build] agent stderr: permission denied",
-		"[build] completion signal seen; waiting up to 30s for process exit",
 		"[build] agent finished: completed=true success=true",
 		"[build] posting issue comment for #9",
 		"[build] unlocking issue #9",
@@ -320,7 +318,7 @@ func (a *recordingBuildAgent) BuildCommand(prompt string) []string {
 	a.prompt = prompt
 	return []string{
 		"sh", "-c",
-		`printf '%s\n' '` + orchestrator.CompletionSignal + `'`,
+		`true`,
 	}
 }
 
@@ -377,9 +375,9 @@ func (loggingBuildAgent) BuildCommand(string) []string {
 	return []string{
 		"sh", "-c",
 		`printf '%s\n' '{"type":"step_start","sessionID":"sess_123"}'; ` +
+			`printf '%s\n' '{"type":"text","part":{"type":"text","text":"thinking through slog migration"}}'; ` +
 			`printf '%s\n' '{"type":"tool_use","part":{"type":"tool","tool":"bash","state":{"status":"completed","input":{"command":"npm test"}}}}'; ` +
-			`echo 'permission denied' >&2; ` +
-			`printf '%s\n' '` + orchestrator.CompletionSignal + `'`,
+			`echo 'permission denied' >&2`,
 	}
 }
 

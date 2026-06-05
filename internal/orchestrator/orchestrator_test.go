@@ -46,7 +46,7 @@ func (envFixtureAgent) Env() map[string]string {
 func (envFixtureAgent) BuildCommand(string) []string {
 	return []string{
 		"sh", "-c",
-		`test "$MARKER" = "value" && printf '%s\n' '` + orchestrator.CompletionSignal + `'`,
+		`test "$MARKER" = "value"`,
 	}
 }
 
@@ -54,7 +54,7 @@ func (envFixtureAgent) ParseStreamLine(string) ([]agent.AgentEvent, error) {
 	return nil, nil
 }
 
-func TestRun_succeedsWhenStdoutContainsCompletionSignal(t *testing.T) {
+func TestRun_succeedsWhenAgentExitsCleanly(t *testing.T) {
 	t.Parallel()
 
 	workspace := t.TempDir()
@@ -62,7 +62,7 @@ func TestRun_succeedsWhenStdoutContainsCompletionSignal(t *testing.T) {
 		"1": {Number: 1, Title: "afk", Body: "do work"},
 	})
 	o := orchestrator.New(orchestrator.Deps{
-		Agent:   &signalFixtureAgent{},
+		Agent:   &cleanExitFixtureAgent{},
 		Sandbox: nosandbox.NewProvider(),
 		Issues:  tracker,
 	})
@@ -75,7 +75,7 @@ func TestRun_succeedsWhenStdoutContainsCompletionSignal(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 	if !summary.Completed {
-		t.Fatal("Completed = false, want true (completion signal seen)")
+		t.Fatal("Completed = false, want true")
 	}
 	if !summary.Success {
 		t.Fatal("Success = false, want true")
@@ -91,21 +91,20 @@ func TestRun_succeedsWhenStdoutContainsCompletionSignal(t *testing.T) {
 	}
 }
 
-// signalFixtureAgent runs a shell script that emits the AFK completion token on stdout.
-type signalFixtureAgent struct{}
+type cleanExitFixtureAgent struct{}
 
-func (signalFixtureAgent) Name() string { return "fixture" }
+func (cleanExitFixtureAgent) Name() string { return "fixture" }
 
-func (signalFixtureAgent) Env() map[string]string { return nil }
+func (cleanExitFixtureAgent) Env() map[string]string { return nil }
 
-func (signalFixtureAgent) BuildCommand(string) []string {
+func (cleanExitFixtureAgent) BuildCommand(string) []string {
 	return []string{
 		"sh", "-c",
-		`printf '%s\n' '` + orchestrator.CompletionSignal + `'`,
+		`printf '%s\n' 'done'`,
 	}
 }
 
-func (signalFixtureAgent) ParseStreamLine(string) ([]agent.AgentEvent, error) {
+func (cleanExitFixtureAgent) ParseStreamLine(string) ([]agent.AgentEvent, error) {
 	return nil, nil
 }
 
@@ -146,20 +145,16 @@ func (a *jsonlFixtureAgent) Env() map[string]string { return nil }
 func (a *jsonlFixtureAgent) BuildCommand(string) []string {
 	return []string{
 		"sh", "-c",
-		`printf '%s\n' '{"type":"text","content":"hi"}' '{"type":"text","content":"bye"}'` +
-			`; printf '%s\n' '` + orchestrator.CompletionSignal + `'`,
+		`printf '%s\n' '{"type":"text","content":"hi"}' '{"type":"text","content":"bye"}'`,
 	}
 }
 
 func (a *jsonlFixtureAgent) ParseStreamLine(line string) ([]agent.AgentEvent, error) {
-	if line == orchestrator.CompletionSignal {
-		return nil, nil
-	}
 	a.parsedLines++
 	return []agent.AgentEvent{{Kind: agent.EventText, Text: line}}, nil
 }
 
-func TestRun_failsWhenIdleTimeoutExpiresBeforeCompletionSignal(t *testing.T) {
+func TestRun_failsWhenIdleTimeoutExpiresBeforeAgentExit(t *testing.T) {
 	t.Parallel()
 
 	workspace := t.TempDir()
@@ -202,33 +197,6 @@ func (silentFixtureAgent) ParseStreamLine(string) ([]agent.AgentEvent, error) {
 	return nil, nil
 }
 
-func TestRun_succeedsWhenCompletionTimeoutExpiresAfterSignalDespiteHungProcess(t *testing.T) {
-	t.Parallel()
-
-	workspace := t.TempDir()
-	tracker := issuefake.NewTracker(map[string]issuefake.Issue{
-		"1": {Number: 1, Body: "hang"},
-	})
-	o := orchestrator.New(orchestrator.Deps{
-		Agent:   &hangAfterSignalFixtureAgent{},
-		Sandbox: nosandbox.NewProvider(),
-		Issues:  tracker,
-	})
-
-	summary, err := o.Run(context.Background(), orchestrator.RunInput{
-		IssueID:           "1",
-		Workspace:         workspace,
-		IdleTimeout:       5 * time.Second,
-		CompletionTimeout: 50 * time.Millisecond,
-	})
-	if err != nil {
-		t.Fatalf("Run: %v", err)
-	}
-	if !summary.Completed || !summary.Success {
-		t.Fatalf("Completed=%v Success=%v, want both true", summary.Completed, summary.Success)
-	}
-}
-
 func TestRun_includesStderrInAgentExecError(t *testing.T) {
 	t.Parallel()
 
@@ -254,23 +222,6 @@ func TestRun_includesStderrInAgentExecError(t *testing.T) {
 			t.Fatalf("err = %q, want substring %q", err, want)
 		}
 	}
-}
-
-type hangAfterSignalFixtureAgent struct{}
-
-func (hangAfterSignalFixtureAgent) Name() string { return "hang-after-signal" }
-
-func (hangAfterSignalFixtureAgent) Env() map[string]string { return nil }
-
-func (hangAfterSignalFixtureAgent) BuildCommand(string) []string {
-	return []string{
-		"sh", "-c",
-		`printf '%s\n' '` + orchestrator.CompletionSignal + `'; sleep 3600`,
-	}
-}
-
-func (hangAfterSignalFixtureAgent) ParseStreamLine(string) ([]agent.AgentEvent, error) {
-	return nil, nil
 }
 
 type stderrFailureFixtureAgent struct{}
