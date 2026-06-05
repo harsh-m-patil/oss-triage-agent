@@ -182,6 +182,34 @@ func (t *Tracker) Unlock(ctx context.Context, id string) error {
 	return t.RemoveLabel(ctx, id, lockLabel)
 }
 
+// ListRepoLabels returns all label names defined on the repository.
+func (t *Tracker) ListRepoLabels(ctx context.Context) ([]string, error) {
+	path := fmt.Sprintf("/repos/%s/%s/labels?per_page=100", t.owner, t.repo)
+	var raw []ghLabel
+	if err := t.getJSON(ctx, path, &raw); err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(raw))
+	for _, l := range raw {
+		out = append(out, l.Name)
+	}
+	return out, nil
+}
+
+// CreateRepoLabel creates a repository label with the given metadata.
+func (t *Tracker) CreateRepoLabel(ctx context.Context, name, color, description string) error {
+	path := fmt.Sprintf("/repos/%s/%s/labels", t.owner, t.repo)
+	payload, err := json.Marshal(map[string]string{
+		"name":        name,
+		"color":       color,
+		"description": description,
+	})
+	if err != nil {
+		return err
+	}
+	return t.postJSON(ctx, path, payload, nil)
+}
+
 func (t *Tracker) getJSON(ctx context.Context, path string, dest any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, t.baseURL+path, nil)
 	if err != nil {
