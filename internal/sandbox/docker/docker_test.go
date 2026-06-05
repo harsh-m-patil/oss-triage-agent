@@ -102,6 +102,77 @@ func TestHandle_Exec_runsCommandInBindMountedWorkspace(t *testing.T) {
 	}
 }
 
+func TestHandle_Exec_passesEnvToCommand(t *testing.T) {
+	if !dockerAvailable(t) {
+		t.Skip("Docker daemon not available")
+	}
+	t.Parallel()
+
+	p, err := dockerprovider.NewProvider()
+	if err != nil {
+		t.Fatalf("NewProvider: %v", err)
+	}
+
+	handle, err := p.Create(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	defer handle.Close()
+
+	var stdout []string
+	err = handle.Exec(
+		context.Background(),
+		"sh",
+		[]string{"-c", `printf '%s\n' "$MARKER"`},
+		map[string]string{"MARKER": "value"},
+		func(line string) { stdout = append(stdout, line) },
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	if len(stdout) != 1 || stdout[0] != "value" {
+		t.Fatalf("stdout = %v, want [value]", stdout)
+	}
+}
+
+func TestHandle_Exec_hasOpencodeAvailableWithoutHostBinary(t *testing.T) {
+	if !dockerAvailable(t) {
+		t.Skip("Docker daemon not available")
+	}
+
+	// Hide any host-installed opencode so the sandbox must provide its own copy.
+	t.Setenv("PATH", "")
+
+	p, err := dockerprovider.NewProvider()
+	if err != nil {
+		t.Fatalf("NewProvider: %v", err)
+	}
+
+	handle, err := p.Create(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	defer handle.Close()
+
+	var stdout []string
+	var stderr []string
+	err = handle.Exec(
+		context.Background(),
+		"opencode",
+		[]string{"--version"},
+		nil,
+		func(line string) { stdout = append(stdout, line) },
+		func(line string) { stderr = append(stderr, line) },
+	)
+	if err != nil {
+		t.Fatalf("Exec opencode --version: %v (stderr=%v)", err, stderr)
+	}
+	if len(stdout) == 0 {
+		t.Fatalf("stdout = %v, want version output", stdout)
+	}
+}
+
 func TestHandle_Close_stopsContainerAndIsIdempotent(t *testing.T) {
 	if !dockerAvailable(t) {
 		t.Skip("Docker daemon not available")

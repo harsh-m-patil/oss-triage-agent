@@ -20,12 +20,14 @@ func runContainerExec(
 	cli *client.Client,
 	containerID, workDir, command string,
 	args []string,
+	env map[string]string,
 	onStdout, onStderr func(line string),
 ) error {
 	execCfg := container.ExecOptions{
 		AttachStdout: true,
 		AttachStderr: true,
 		Cmd:          append([]string{command}, args...),
+		Env:          dockerEnv(env),
 		WorkingDir:   workDir,
 	}
 	execResp, err := cli.ContainerExecCreate(ctx, containerID, execCfg)
@@ -109,6 +111,17 @@ func runContainerExec(
 		exitErr = fmt.Errorf("exec exited with code %d", inspect.ExitCode)
 	}
 	return errors.Join(copyErr, streamErr, exitErr)
+}
+
+func dockerEnv(env map[string]string) []string {
+	if len(env) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(env))
+	for k, v := range env {
+		out = append(out, k+"="+v)
+	}
+	return out
 }
 
 // stopExec closes the attach stream and kills the exec process so waiters unblock.

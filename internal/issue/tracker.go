@@ -17,4 +17,6 @@ type IssueTracker interface {
 	Comment(ctx context.Context, id string, body string) error
 	AddLabel(ctx context.Context, id, label string) error
 	RemoveLabel(ctx context.Context, id, label string) error
+	Lock(ctx context.Context, id string) error
+	Unlock(ctx context.Context, id string) error
 }

@@ -49,6 +49,30 @@ oss-triage-agent build --issue 42
 oss-triage-agent --issue 42
 ```
 
+### Build workflow
+
+`build` now runs the AFK Build workflow end to end for a real GitHub issue:
+
+```bash
+# Uses the current repo's origin URL to resolve owner/repo.
+# Requires GITHUB_TOKEN and opencode on PATH.
+oss-triage-agent build --issue 42 --repo . --model opencode/big-pickle
+
+# Run on the host instead of Docker for local development.
+oss-triage-agent build --issue 42 --sandbox nosandbox
+```
+
+Useful flags:
+
+- `--repo` selects the target git repository root. The command reads `remote.origin.url` from that repo to resolve the GitHub owner/repo.
+- `--sandbox docker|nosandbox` chooses the execution environment. `docker` is the default; `nosandbox` is the local-development convenience mode.
+- `--model`, `--variant`, `--agent`, and `--dangerously-skip-permissions` mirror `agent run`.
+- `--idle-timeout` and `--completion-timeout` control orchestrator timeout behavior.
+
+`build` records the repo base HEAD, prepares an issue worktree under `.agent/worktrees/`, locks the issue with `agent:in-progress`, runs the agent, posts a success or failure comment, and always unlocks the issue on exit.
+
+Set `GITHUB_TOKEN` for issue read/write access. Set `OPENCODE_API_KEY` when the configured model requires it.
+
 ### Agent debug command
 
 Run an OpenCode agent and print normalized **Agent events** as JSON lines on stdout:

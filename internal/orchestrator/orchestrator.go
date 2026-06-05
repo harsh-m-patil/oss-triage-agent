@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/harsh-m-patil/oss-triage-agent/internal/agent"
@@ -20,9 +21,12 @@ type Deps struct {
 // RunInput identifies the issue and workspace for a triage run.
 type RunInput struct {
 	IssueID           string        `json:"issue_id"`
+	Issue             *issue.Issue  `json:"-"`
+	Prompt            string        `json:"prompt,omitempty"`
 	Workspace         string        `json:"workspace"`
 	IdleTimeout       time.Duration `json:"idle_timeout,omitempty"`
 	CompletionTimeout time.Duration `json:"completion_timeout,omitempty"`
+	Progress          func(ProgressEvent) `json:"-"`
 }
 
 // RunSummary captures observable outcomes from a triage run.
@@ -40,6 +44,29 @@ type RunSummary struct {
 	Events []agent.AgentEvent `json:"events,omitempty"`
 }
 
+// ProgressKind identifies a live orchestrator progress update.
+type ProgressKind string
+
+const (
+	ProgressAgentStart      ProgressKind = "agent_start"
+	ProgressAgentEvent      ProgressKind = "agent_event"
+	ProgressAgentStderr     ProgressKind = "agent_stderr"
+	ProgressCompletionSignal ProgressKind = "completion_signal"
+	ProgressHeartbeat       ProgressKind = "heartbeat"
+)
+
+// ProgressEvent is a live update emitted while an orchestrator run is active.
+type ProgressEvent struct {
+	Kind              ProgressKind
+	Command           string
+	Args              []string
+	Event             *agent.AgentEvent
+	StderrLine        string
+	Wait              time.Duration
+	Completed         bool
+	CompletionTimeout time.Duration
+}
+
 // Orchestrator coordinates AFK workflows using provider interfaces only.
 type Orchestrator struct {
 	deps Deps
@@ -52,9 +79,13 @@ func New(deps Deps) *Orchestrator {
 
 // Run loads the issue, prepares a sandbox, and builds the agent command.
 func (o *Orchestrator) Run(ctx context.Context, in RunInput) (RunSummary, error) {
-	it, err := o.deps.Issues.ReadIssue(ctx, in.IssueID)
-	if err != nil {
-		return RunSummary{}, fmt.Errorf("read issue: %w", err)
+	it := in.Issue
+	if it == nil {
+		var err error
+		it, err = o.deps.Issues.ReadIssue(ctx, in.IssueID)
+		if err != nil {
+			return RunSummary{}, fmt.Errorf("read issue: %w", err)
+		}
 	}
 
 	handle, err := o.deps.Sandbox.Create(ctx, in.Workspace)
@@ -63,7 +94,11 @@ func (o *Orchestrator) Run(ctx context.Context, in RunInput) (RunSummary, error)
 	}
 	defer handle.Close()
 
-	argv := o.deps.Agent.BuildCommand(it.Body)
+	prompt := strings.TrimSpace(in.Prompt)
+	if prompt == "" {
+		prompt = it.Body
+	}
+	argv := o.deps.Agent.BuildCommand(prompt)
 	if len(argv) == 0 {
 		return RunSummary{}, fmt.Errorf("agent %q returned empty command", o.deps.Agent.Name())
 	}
@@ -82,6 +117,7 @@ func (o *Orchestrator) Run(ctx context.Context, in RunInput) (RunSummary, error)
 		o.deps.Agent.Env(),
 		in.IdleTimeout,
 		in.CompletionTimeout,
+		in.Progress,
 		&summary,
 	)
 	return summary, err
