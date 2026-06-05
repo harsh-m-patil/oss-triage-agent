@@ -8,13 +8,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"strings"
 	"time"
 
 	"github.com/harsh-m-patil/oss-triage-agent/internal/agent"
 	"github.com/harsh-m-patil/oss-triage-agent/internal/git"
 	issuepkg "github.com/harsh-m-patil/oss-triage-agent/internal/issue"
+	"github.com/harsh-m-patil/oss-triage-agent/internal/logging"
 	"github.com/harsh-m-patil/oss-triage-agent/internal/orchestrator"
 	"github.com/harsh-m-patil/oss-triage-agent/internal/prompt"
 	"github.com/harsh-m-patil/oss-triage-agent/internal/sandbox"
@@ -48,7 +48,7 @@ type buildWorkflowDeps struct {
 	Sandbox sandbox.SandboxProvider
 	Agent   agent.AgentProvider
 	Prompt  prompt.Builder
-	Log     io.Writer
+	Log     *logging.CharmLogger
 }
 
 var (
@@ -79,7 +79,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	deps.Log = cmd.ErrOrStderr()
+	deps.Log = logging.NewCharm(cmd.ErrOrStderr(), "build")
 
 	summary, err := buildWorkflowRunner(cmd.Context(), deps, opts.buildOptions)
 	if err != nil {
@@ -97,19 +97,20 @@ func runBuild(cmd *cobra.Command, args []string) error {
 }
 
 func runBuildWorkflow(ctx context.Context, deps buildWorkflowDeps, opts buildOptions) (summary orchestrator.RunSummary, err error) {
-	buildLogf(deps.Log, "reading issue %s", opts.IssueID)
+	log := deps.Log.Charm()
+	log.Info("reading issue", "issue_id", opts.IssueID)
 	it, err := deps.Issues.ReadIssue(ctx, opts.IssueID)
 	if err != nil {
 		return orchestrator.RunSummary{}, fmt.Errorf("read issue: %w", err)
 	}
-	buildLogf(deps.Log, "loaded issue #%d: %s", it.Number, singleLine(it.Title))
+	log.Info("loaded issue", "number", it.Number, "title", singleLine(it.Title))
 
-	buildLogf(deps.Log, "locking issue #%d", it.Number)
+	log.Info("locking issue", "number", it.Number)
 	if err := deps.Issues.Lock(ctx, opts.IssueID); err != nil {
 		return orchestrator.RunSummary{}, fmt.Errorf("lock issue: %w", err)
 	}
 	defer func() {
-		buildLogf(deps.Log, "unlocking issue #%d", it.Number)
+		log.Info("unlocking issue", "number", it.Number)
 		unlockErr := deps.Issues.Unlock(ctx, opts.IssueID)
 		if unlockErr == nil {
 			return
@@ -121,28 +122,27 @@ func runBuildWorkflow(ctx context.Context, deps buildWorkflowDeps, opts buildOpt
 		err = errors.Join(err, fmt.Errorf("unlock issue: %w", unlockErr))
 	}()
 
-	buildLogf(deps.Log, "recording base HEAD")
+	log.Info("recording base HEAD")
 	if err := deps.Repo.RecordBaseHEAD(ctx); err != nil {
 		return orchestrator.RunSummary{}, fmt.Errorf("record base head: %w", err)
 	}
-	buildLogf(deps.Log, "preparing worktree %s", deps.Repo.BranchName(*it))
+	log.Info("preparing worktree", "branch", deps.Repo.BranchName(*it))
 	wt, err := deps.Repo.PrepareWorktree(ctx, *it)
 	if err != nil {
 		return orchestrator.RunSummary{}, fmt.Errorf("prepare worktree: %w", err)
 	}
-	buildLogf(deps.Log, "worktree ready: %s", wt.Path)
+	log.Info("worktree ready", "path", wt.Path)
 
 	o := orchestrator.New(orchestrator.Deps{
 		Agent:   deps.Agent,
 		Sandbox: deps.Sandbox,
 		Issues:  deps.Issues,
 	})
-	buildLogf(
-		deps.Log,
-		"starting agent %s in %s (idle timeout %s)",
-		deps.Agent.Name(),
-		wt.Path,
-		opts.IdleTimeout,
+	log.Info(
+		"starting agent",
+		"agent", deps.Agent.Name(),
+		"workspace", wt.Path,
+		"idle_timeout", opts.IdleTimeout,
 	)
 	summary, err = o.Run(ctx, orchestrator.RunInput{
 		IssueID:     opts.IssueID,
@@ -152,17 +152,16 @@ func runBuildWorkflow(ctx context.Context, deps buildWorkflowDeps, opts buildOpt
 		IdleTimeout: opts.IdleTimeout,
 		Progress:    newBuildProgressLogger(deps.Log),
 	})
-	buildLogf(
-		deps.Log,
-		"agent finished: completed=%t success=%t sandbox=%s events=%d",
-		summary.Completed,
-		summary.Success,
-		summary.SandboxKind,
-		len(summary.Events),
+	log.Info(
+		"agent finished",
+		"completed", summary.Completed,
+		"success", summary.Success,
+		"sandbox", summary.SandboxKind,
+		"events", len(summary.Events),
 	)
 
 	commentBody := renderBuildComment(*it, wt, summary, err)
-	buildLogf(deps.Log, "posting issue comment for #%d", it.Number)
+	log.Info("posting issue comment", "number", it.Number)
 	if commentErr := deps.Issues.Comment(ctx, opts.IssueID, commentBody); commentErr != nil {
 		if err == nil {
 			err = fmt.Errorf("comment on issue: %w", commentErr)
@@ -199,58 +198,58 @@ func renderBuildComment(it issuepkg.Issue, wt git.Worktree, summary orchestrator
 	)
 }
 
-func buildLogf(w io.Writer, format string, args ...any) {
-	if w == nil {
-		return
-	}
-	_, _ = fmt.Fprintf(w, "[build] "+format+"\n", args...)
-}
-
-func newBuildProgressLogger(w io.Writer) func(orchestrator.ProgressEvent) {
-	if w == nil {
+func newBuildProgressLogger(log *logging.CharmLogger) func(orchestrator.ProgressEvent) {
+	if log == nil {
 		return nil
 	}
 	return func(ev orchestrator.ProgressEvent) {
 		switch ev.Kind {
 		case orchestrator.ProgressAgentStart:
-			buildLogf(w, "agent command: %s", singleLine(joinCommand(ev.Command, ev.Args)))
+			log.Agent("command", "command", singleLine(joinCommand(ev.Command, ev.Args)))
 		case orchestrator.ProgressAgentEvent:
 			if ev.Event == nil {
 				return
 			}
 			switch ev.Event.Kind {
 			case agent.EventSessionID:
-				buildLogf(w, "agent session: %s", ev.Event.SessionID)
+				log.Agent("session", "session_id", ev.Event.SessionID)
 			case agent.EventText:
-				buildLogf(w, "agent text: %s", truncateForLog(singleLine(ev.Event.Text), 200))
+				log.Agent("text", "text", truncateForLog(singleLine(ev.Event.Text), 200))
 			case agent.EventResult:
 				if ev.Event.Result == nil {
 					return
 				}
-				buildLogf(w, "agent result: %s", truncateForLog(singleLine(ev.Event.Result.Output), 200))
+				log.Agent("result", "output", truncateForLog(singleLine(ev.Event.Result.Output), 200))
 			case agent.EventToolCall:
 				if ev.Event.ToolCall == nil {
 					return
 				}
-				buildLogf(w, "agent tool: %s %s", ev.Event.ToolCall.Name, truncateForLog(singleLine(ev.Event.ToolCall.Args), 160))
+				log.Tool(
+					ev.Event.ToolCall.Name,
+					"args", truncateForLog(singleLine(ev.Event.ToolCall.Args), 160),
+				)
 			case agent.EventUsage:
 				if ev.Event.Usage == nil {
 					return
 				}
-				buildLogf(w, "agent usage: input=%d output=%d", ev.Event.Usage.InputTokens, ev.Event.Usage.OutputTokens)
+				log.Usage(
+					"tokens",
+					"input_tokens", ev.Event.Usage.InputTokens,
+					"output_tokens", ev.Event.Usage.OutputTokens,
+				)
 			}
 		case orchestrator.ProgressAgentStderr:
-			buildLogf(w, "agent stderr: %s", truncateForLog(singleLine(ev.StderrLine), 200))
+			log.Stderr("line", "line", truncateForLog(singleLine(ev.StderrLine), 200))
 		case orchestrator.ProgressHeartbeat:
 			wait := ev.Wait.Round(time.Second)
 			if wait <= 0 {
 				wait = time.Second
 			}
 			if ev.Completed {
-				buildLogf(w, "still waiting for agent shutdown (%s since last stdout)", wait)
+				log.Heartbeat("waiting for shutdown", "since_last_stdout", wait)
 				return
 			}
-			buildLogf(w, "still waiting for agent output (%s since last stdout)", wait)
+			log.Heartbeat("waiting for output", "since_last_stdout", wait)
 		}
 	}
 }

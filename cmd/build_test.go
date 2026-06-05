@@ -12,6 +12,7 @@ import (
 	opencodeagent "github.com/harsh-m-patil/oss-triage-agent/internal/agent/opencode"
 	"github.com/harsh-m-patil/oss-triage-agent/internal/git"
 	issuepkg "github.com/harsh-m-patil/oss-triage-agent/internal/issue"
+	"github.com/harsh-m-patil/oss-triage-agent/internal/logging"
 	"github.com/harsh-m-patil/oss-triage-agent/internal/prompt"
 	"github.com/harsh-m-patil/oss-triage-agent/internal/sandbox"
 	"github.com/harsh-m-patil/oss-triage-agent/internal/sandbox/nosandbox"
@@ -183,28 +184,38 @@ func TestRunBuildWorkflow_logsPhasesAndAgentProgress(t *testing.T) {
 		Sandbox: nosandbox.NewProvider(),
 		Agent:   loggingBuildAgent{},
 		Prompt:  prompt.Builder{},
-		Log:     &logs,
+		Log:     logging.NewCharm(&logs, "build"),
 	}, buildOptions{IssueID: "9"})
 	if err != nil {
 		t.Fatalf("runBuildWorkflow: %v", err)
 	}
 
 	for _, want := range []string{
-		"[build] reading issue 9",
-		"[build] locking issue #9",
-		"[build] recording base HEAD",
-		"[build] preparing worktree agent/issue-9-wire-build-workflow",
-		"[build] worktree ready:",
-		"[build] starting agent recording-log-agent in",
-		"[build] agent command: sh -c",
-		"[build] agent session: sess_123",
-		"[build] agent text: thinking through slog migration",
-		"[build] agent result: thinking through slog migration",
-		"[build] agent tool: bash npm test",
-		"[build] agent stderr: permission denied",
-		"[build] agent finished: completed=true success=true",
-		"[build] posting issue comment for #9",
-		"[build] unlocking issue #9",
+		"INFO",
+		"reading issue",
+		"issue_id=9",
+		"locking issue",
+		"number=9",
+		"recording base HEAD",
+		"preparing worktree",
+		"branch=agent/issue-9-wire-build-workflow",
+		"worktree ready",
+		"starting agent",
+		"agent=recording-log-agent",
+		"AGENT",
+		"command=\"sh -c",
+		"session_id=sess_123",
+		"text=\"thinking through slog migration\"",
+		"TOOL",
+		"bash",
+		"args=\"npm test\"",
+		"STDERR",
+		"line=\"permission denied\"",
+		"agent finished",
+		"completed=true",
+		"success=true",
+		"posting issue comment",
+		"unlocking issue",
 	} {
 		if !strings.Contains(logs.String(), want) {
 			t.Fatalf("logs missing %q:\n%s", want, logs.String())
