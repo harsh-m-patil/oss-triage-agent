@@ -3,15 +3,20 @@ package nosandbox
 import (
 	"context"
 	"errors"
+	"os"
 	"os/exec"
 	"sync"
 
 	"github.com/harsh-m-patil/oss-triage-agent/internal/sandbox/streamio"
 )
 
-func runCommand(ctx context.Context, dir, command string, args []string, onStdout, onStderr func(line string)) error {
+func runCommand(ctx context.Context, dir, command string, args []string, env map[string]string, onStdout, onStderr func(line string)) error {
 	cmd := exec.CommandContext(ctx, command, args...)
 	cmd.Dir = dir
+	cmd.Env = os.Environ()
+	for k, v := range env {
+		cmd.Env = append(cmd.Env, k+"="+v)
+	}
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
