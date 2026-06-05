@@ -21,4 +21,7 @@ func TestFakeProvider_Create_returnsBindMountHandle(t *testing.T) {
 	if handle.Kind() != sandbox.SandboxBindMount {
 		t.Fatalf("Kind = %q, want %q", handle.Kind(), sandbox.SandboxBindMount)
 	}
+	if handle.WorkspacePath() != "/workspace" {
+		t.Fatalf("WorkspacePath = %q, want /workspace", handle.WorkspacePath())
+	}
 }
