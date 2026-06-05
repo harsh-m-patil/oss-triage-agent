@@ -65,3 +65,11 @@ func (t *Tracker) RemoveLabel(_ context.Context, id, label string) error {
 	t.issues[id] = it
 	return nil
 }
+
+func (t *Tracker) Lock(ctx context.Context, id string) error {
+	return t.AddLabel(ctx, id, "agent:in-progress")
+}
+
+func (t *Tracker) Unlock(ctx context.Context, id string) error {
+	return t.RemoveLabel(ctx, id, "agent:in-progress")
+}

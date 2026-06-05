@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"sync"
 
 	"github.com/docker/docker/api/types/container"
@@ -51,11 +52,16 @@ func (p *Provider) Create(ctx context.Context, workspace string) (sandbox.Sandbo
 		return nil, err
 	}
 
+	binds := []string{fmt.Sprintf("%s:%s", workspace, WorkspaceInContainer)}
+	if opencodePath, err := exec.LookPath("opencode"); err == nil {
+		binds = append(binds, fmt.Sprintf("%s:/usr/local/bin/opencode:ro", opencodePath))
+	}
+
 	resp, err := p.cli.ContainerCreate(ctx, &container.Config{
 		Image: defaultImage,
 		Cmd:   []string{"sleep", "infinity"},
 	}, &container.HostConfig{
-		Binds: []string{fmt.Sprintf("%s:%s", workspace, WorkspaceInContainer)},
+		Binds: binds,
 	}, nil, nil, "")
 	if err != nil {
 		return nil, err
@@ -109,8 +115,8 @@ func (h *handle) Kind() sandbox.SandboxKind { return sandbox.SandboxBindMount }
 
 func (h *handle) WorkspacePath() string { return WorkspaceInContainer }
 
-func (h *handle) Exec(ctx context.Context, command string, args []string, _ map[string]string, onStdout, onStderr func(line string)) error {
-	return runContainerExec(ctx, h.cli, h.containerID, WorkspaceInContainer, command, args, onStdout, onStderr)
+func (h *handle) Exec(ctx context.Context, command string, args []string, env map[string]string, onStdout, onStderr func(line string)) error {
+	return runContainerExec(ctx, h.cli, h.containerID, WorkspaceInContainer, command, args, env, onStdout, onStderr)
 }
 
 func (h *handle) Close() error {
