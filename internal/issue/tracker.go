@@ -4,10 +4,10 @@ import "context"
 
 // Issue is a normalized work item from a tracker.
 type Issue struct {
-	Number int
-	Title  string
-	Body   string
-	Labels []string
+	Number int      `json:"number"`
+	Title  string   `json:"title"`
+	Body   string   `json:"body,omitempty"`
+	Labels []string `json:"labels,omitempty"`
 }
 
 // IssueTracker abstracts GitHub or other issue backends.
