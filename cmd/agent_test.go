@@ -53,7 +53,10 @@ func TestStreamAgentEvents_printsNormalizedEvents(t *testing.T) {
 		t.Fatalf("unmarshal event: %v", err)
 	}
 	if event.Kind != agent.EventText || event.Text != "hello" {
-		t.Fatalf("event = %+v, want text hello", event)
+		t.Fatalf("event = %+v, want kind=text text=hello", event)
+	}
+	if strings.Contains(lines[0], `"Kind"`) {
+		t.Fatalf("output uses PascalCase JSON keys: %s", lines[0])
 	}
 }
 
