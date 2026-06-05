@@ -15,16 +15,15 @@ import (
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "oss-triage-agent",
-	Short: "A brief description of your application",
-	Long: `A longer description that spans multiple lines and likely contains
-examples and usage of using your application. For example:
+	Short: "AFK agent CLI for triaging, planning, and building GitHub issues",
+	Long: `oss-triage-agent runs away-from-keyboard (AFK) coding agents against
+open-source GitHub issues.
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
-	// Uncomment the following line if your bare application
-	// has an action associated with it:
-	// Run: func(cmd *cobra.Command, args []string) { },
+See README.md for CLI usage. Domain vocabulary and label contracts are in
+CONTEXT.md; architecture and library docs are in docs/.`,
+	Example: `  oss-triage-agent triage
+  oss-triage-agent triage --issue 42
+  oss-triage-agent build --issue 42 --repo .`,
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.

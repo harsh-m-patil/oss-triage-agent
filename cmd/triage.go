@@ -24,7 +24,21 @@ import (
 var triageCmd = &cobra.Command{
 	Use:   "triage",
 	Short: "Run the AFK triage workflow for one or more issues",
-	RunE:  runTriage,
+	Long: `Assess GitHub issues and apply triage output automatically.
+
+Without --issue, lists open issues that are unlabeled or carry needs-triage.
+With --issue, runs OpenCode with the embedded triage skill, posts a comment
+prefixed with the AI triage disclaimer, and swaps category/state labels.
+
+Requires GITHUB_TOKEN and opencode on PATH. Resolves the GitHub repository
+from remote.origin.url in --repo (default: current directory).`,
+	Example: `  # List candidates needing triage
+  oss-triage-agent triage
+
+  # Triage a single issue
+  oss-triage-agent triage --issue 42
+  oss-triage-agent triage --issue 42 --repo /path/to/target-repo`,
+	RunE: runTriage,
 }
 
 type triageOptions struct {

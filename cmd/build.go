@@ -24,7 +24,17 @@ import (
 var buildCmd = &cobra.Command{
 	Use:   "build",
 	Short: "Run the AFK build workflow for an issue",
-	RunE:  runBuild,
+	Long: `Implement a GitHub issue in a sandboxed OpenCode run.
+
+Records the repo base HEAD, prepares an issue worktree under
+.agent/worktrees/, locks the issue with agent:in-progress, runs the agent,
+posts a success or failure comment, and unlocks the issue on exit.
+
+Requires GITHUB_TOKEN and opencode on PATH. Resolves the GitHub repository
+from remote.origin.url in --repo (default: current directory).`,
+	Example: `  oss-triage-agent build --issue 42 --repo .
+  oss-triage-agent build --issue 42 --sandbox nosandbox`,
+	RunE: runBuild,
 }
 
 type buildOptions struct {

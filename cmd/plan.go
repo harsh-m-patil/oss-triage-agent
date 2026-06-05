@@ -10,17 +10,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// planCmd represents the plan command
 var planCmd = &cobra.Command{
 	Use:   "plan",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
+	Short: "Run the AFK plan workflow for an issue (not implemented yet)",
+	Long: `Turn a triaged GitHub issue into an implementation plan by running an
+AFK agent over the issue body and repository context.
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
-	RunE: runPlan,
+This subcommand is a stub. Use triage to assess issues and build to implement them.`,
+	Example: `  oss-triage-agent plan --issue 42`,
+	RunE:    runPlan,
 }
 
 func runPlan(cmd *cobra.Command, args []string) error {
