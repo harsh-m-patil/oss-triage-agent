@@ -205,7 +205,7 @@ func TestRunBuildWorkflow_logsPhasesAndAgentProgress(t *testing.T) {
 		"AGENT",
 		"command=\"sh -c",
 		"session_id=sess_123",
-		"text=\"thinking through slog migration\"",
+		"result output=\"thinking through slog migration\"",
 		"TOOL",
 		"bash",
 		"args=\"npm test\"",

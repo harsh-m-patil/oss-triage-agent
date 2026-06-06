@@ -15,6 +15,29 @@ import (
 	"github.com/harsh-m-patil/oss-triage-agent/internal/sandbox/nosandbox"
 )
 
+func TestAgentOutputText_collectsResultEvents(t *testing.T) {
+	t.Parallel()
+
+	brief := "## Agent Brief\n\nShip triage."
+	got := agentOutputText([]agent.AgentEvent{
+		{Kind: agent.EventResult, Result: &agent.Result{Output: brief}},
+	})
+	if got != brief {
+		t.Fatalf("agentOutputText = %q, want %q", got, brief)
+	}
+}
+
+func TestAgentOutputText_collectsTextEvents(t *testing.T) {
+	t.Parallel()
+
+	got := agentOutputText([]agent.AgentEvent{
+		{Kind: agent.EventText, Text: "hello"},
+	})
+	if got != "hello" {
+		t.Fatalf("agentOutputText = %q, want hello", got)
+	}
+}
+
 func TestRunTriageWorkflow_appliesLabelsAndPostsComment(t *testing.T) {
 	t.Parallel()
 
@@ -56,6 +79,9 @@ func TestRunTriageWorkflow_appliesLabelsAndPostsComment(t *testing.T) {
 		if !strings.Contains(tracker.comments[0], want) {
 			t.Fatalf("comment missing %q:\n%s", want, tracker.comments[0])
 		}
+	}
+	if strings.Count(tracker.comments[0], "## Agent Brief") != 1 {
+		t.Fatalf("agent brief duplicated in comment:\n%s", tracker.comments[0])
 	}
 	if !strings.Contains(agentProvider.prompt, "Implement automated triage.") {
 		t.Fatalf("prompt missing issue body:\n%s", agentProvider.prompt)
