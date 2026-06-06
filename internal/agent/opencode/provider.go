@@ -84,7 +84,6 @@ func (p *Provider) ParseStreamLine(line string) ([]agent.AgentEvent, error) {
 		}
 		text := raw.Part.Text
 		return []agent.AgentEvent{
-			{Kind: agent.EventText, Text: text},
 			{Kind: agent.EventResult, Result: &agent.Result{Output: text}},
 		}, nil
 

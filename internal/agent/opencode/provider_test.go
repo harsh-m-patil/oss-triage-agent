@@ -50,7 +50,6 @@ func TestProvider_ParseStreamLine_fixture(t *testing.T) {
 		{
 			fixture: "text.jsonl",
 			want: []agent.AgentEvent{
-				{Kind: agent.EventText, Text: "Hello world COMPLETE "},
 				{Kind: agent.EventResult, Result: &agent.Result{Output: "Hello world COMPLETE "}},
 			},
 		},
