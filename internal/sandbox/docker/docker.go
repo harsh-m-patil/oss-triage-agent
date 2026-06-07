@@ -24,7 +24,7 @@ const WorkspaceInContainer = "/workspace"
 const (
 	defaultBaseImage = "debian:bookworm-slim"
 	defaultImageRepo = "oss-triage-agent/opencode"
-	defaultImageTag  = "bookworm-slim-v2"
+	defaultImageTag  = "bookworm-slim-v3"
 )
 
 var (
@@ -103,7 +103,7 @@ func (p *Provider) ensureImage(ctx context.Context, ref string) error {
 	if err == nil {
 		return nil
 	}
-	buildContext, err := opencodeImageBuildContext()
+	buildContext, err := sandboxImageBuildContext()
 	if err != nil {
 		return err
 	}
@@ -135,16 +135,21 @@ func defaultImageRef() (string, error) {
 	return fmt.Sprintf("%s:%s-%s", defaultImageRepo, defaultImageTag, arch), nil
 }
 
-func opencodeImageBuildContext() ([]byte, error) {
+func sandboxImageBuildContext() ([]byte, error) {
 	dockerfile := fmt.Sprintf(`
 FROM %s
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends bash ca-certificates curl git tar \
+ && apt-get install -y --no-install-recommends bash ca-certificates curl git tar gnupg \
  && rm -rf /var/lib/apt/lists/*
 
 RUN curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path \
  && ln -sf /root/.opencode/bin/opencode /usr/local/bin/opencode
+
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+ && apt-get install -y --no-install-recommends nodejs \
+ && npm install -g --ignore-scripts @mariozechner/pi-coding-agent \
+ && rm -rf /var/lib/apt/lists/*
 
 WORKDIR %s
 `, defaultBaseImage, WorkspaceInContainer)
@@ -226,8 +231,8 @@ func (h *handle) Kind() sandbox.SandboxKind { return sandbox.SandboxBindMount }
 
 func (h *handle) WorkspacePath() string { return WorkspaceInContainer }
 
-func (h *handle) Exec(ctx context.Context, command string, args []string, env map[string]string, onStdout, onStderr func(line string)) error {
-	return runContainerExec(ctx, h.cli, h.containerID, WorkspaceInContainer, command, args, env, onStdout, onStderr)
+func (h *handle) Exec(ctx context.Context, command string, args []string, stdin string, env map[string]string, onStdout, onStderr func(line string)) error {
+	return runContainerExec(ctx, h.cli, h.containerID, WorkspaceInContainer, command, args, stdin, env, onStdout, onStderr)
 }
 
 func (h *handle) Close() error {

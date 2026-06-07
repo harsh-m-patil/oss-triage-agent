@@ -211,7 +211,7 @@ func (a *triageAgent) Name() string { return "recording-triage-agent" }
 
 func (a *triageAgent) Env() map[string]string { return nil }
 
-func (a *triageAgent) BuildCommand(prompt string) []string {
+func (a *triageAgent) BuildLaunch(prompt string) agent.Launch {
 	a.prompt = prompt
 	payload, _ := json.Marshal(map[string]any{
 		"type": "text",
@@ -220,7 +220,7 @@ func (a *triageAgent) BuildCommand(prompt string) []string {
 			"text": a.output,
 		},
 	})
-	return []string{"printf", "%s\n", string(payload)}
+	return agent.Launch{Argv: []string{"printf", "%s\n", string(payload)}}
 }
 
 func (a *triageAgent) ParseStreamLine(line string) ([]agent.AgentEvent, error) {

@@ -24,15 +24,17 @@ import (
 var buildCmd = &cobra.Command{
 	Use:   "build",
 	Short: "Run the AFK build workflow for an issue",
-	Long: `Implement a GitHub issue in a sandboxed OpenCode run.
+	Long: `Implement a GitHub issue in a sandboxed agent run.
 
 Records the repo base HEAD, prepares an issue worktree under
 .agent/worktrees/, locks the issue with agent:in-progress, runs the agent,
 posts a success or failure comment, and unlocks the issue on exit.
 
-Requires GITHUB_TOKEN and opencode on PATH. Resolves the GitHub repository
-from remote.origin.url in --repo (default: current directory).`,
+Requires GITHUB_TOKEN. With --sandbox nosandbox, the selected agent binary
+(opencode or pi) must be on PATH. Resolves the GitHub repository from
+remote.origin.url in --repo (default: current directory).`,
 	Example: `  oss-triage-agent build --issue 42 --repo .
+  oss-triage-agent build --issue 42 --provider pi --model claude-sonnet-4
   oss-triage-agent build --issue 42 --sandbox nosandbox`,
 	RunE: runBuild,
 }
@@ -45,9 +47,12 @@ type buildOptions struct {
 type buildRuntimeOptions struct {
 	buildOptions
 	RepoPath                     string
+	Provider                     string
 	Model                        string
 	Variant                      string
 	AgentName                    string
+	Thinking                     string
+	Session                      string
 	SandboxMode                  string
 	DangerouslySkipPermissions   bool
 }
@@ -78,9 +83,12 @@ func runBuild(cmd *cobra.Command, args []string) error {
 			IdleTimeout: buildIdleTimeout,
 		},
 		RepoPath:                   buildRepoPath,
+		Provider:                   buildProvider,
 		Model:                      buildModel,
 		Variant:                    buildVariant,
 		AgentName:                  buildAgentName,
+		Thinking:                   buildThinking,
+		Session:                    buildSession,
 		SandboxMode:                buildSandboxMode,
 		DangerouslySkipPermissions: buildDangerouslySkipPermissions,
 	}

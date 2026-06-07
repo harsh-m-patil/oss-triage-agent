@@ -325,12 +325,12 @@ func (a *recordingBuildAgent) Name() string { return "recording-build-agent" }
 
 func (a *recordingBuildAgent) Env() map[string]string { return nil }
 
-func (a *recordingBuildAgent) BuildCommand(prompt string) []string {
+func (a *recordingBuildAgent) BuildLaunch(prompt string) agent.Launch {
 	a.prompt = prompt
-	return []string{
+	return agent.Launch{Argv: []string{
 		"sh", "-c",
 		`true`,
-	}
+	}}
 }
 
 func (a *recordingBuildAgent) ParseStreamLine(string) ([]agent.AgentEvent, error) {
@@ -353,7 +353,7 @@ func (h failingSandboxHandle) Kind() sandbox.SandboxKind { return sandbox.Sandbo
 
 func (h failingSandboxHandle) WorkspacePath() string { return "" }
 
-func (h failingSandboxHandle) Exec(context.Context, string, []string, map[string]string, func(string), func(string)) error {
+func (h failingSandboxHandle) Exec(context.Context, string, []string, string, map[string]string, func(string), func(string)) error {
 	return h.err
 }
 
@@ -365,11 +365,11 @@ func (stderrFailingBuildAgent) Name() string { return "opencode" }
 
 func (stderrFailingBuildAgent) Env() map[string]string { return nil }
 
-func (stderrFailingBuildAgent) BuildCommand(string) []string {
-	return []string{
+func (stderrFailingBuildAgent) BuildLaunch(string) agent.Launch {
+	return agent.Launch{Argv: []string{
 		"sh", "-c",
 		`echo 'permission denied' >&2; exit 17`,
-	}
+	}}
 }
 
 func (stderrFailingBuildAgent) ParseStreamLine(string) ([]agent.AgentEvent, error) {
@@ -382,14 +382,14 @@ func (loggingBuildAgent) Name() string { return "recording-log-agent" }
 
 func (loggingBuildAgent) Env() map[string]string { return nil }
 
-func (loggingBuildAgent) BuildCommand(string) []string {
-	return []string{
+func (loggingBuildAgent) BuildLaunch(string) agent.Launch {
+	return agent.Launch{Argv: []string{
 		"sh", "-c",
 		`printf '%s\n' '{"type":"step_start","sessionID":"sess_123"}'; ` +
 			`printf '%s\n' '{"type":"text","part":{"type":"text","text":"thinking through slog migration"}}'; ` +
 			`printf '%s\n' '{"type":"tool_use","part":{"type":"tool","tool":"bash","state":{"status":"completed","input":{"command":"npm test"}}}}'; ` +
 			`echo 'permission denied' >&2`,
-	}
+	}}
 }
 
 func (loggingBuildAgent) ParseStreamLine(line string) ([]agent.AgentEvent, error) {

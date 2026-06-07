@@ -13,6 +13,45 @@ import (
 	"github.com/harsh-m-patil/oss-triage-agent/internal/sandbox/nosandbox"
 )
 
+func TestRun_deliversStdinToSandboxExec(t *testing.T) {
+	t.Parallel()
+
+	workspace := t.TempDir()
+	tracker := issuefake.NewTracker(map[string]issuefake.Issue{
+		"1": {Number: 1, Body: "stdin prompt"},
+	})
+	o := orchestrator.New(orchestrator.Deps{
+		Agent:   &stdinFixtureAgent{},
+		Sandbox: nosandbox.NewProvider(),
+		Issues:  tracker,
+	})
+
+	_, err := o.Run(context.Background(), orchestrator.RunInput{
+		IssueID:   "1",
+		Workspace: workspace,
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+}
+
+type stdinFixtureAgent struct{}
+
+func (stdinFixtureAgent) Name() string { return "stdin-fixture" }
+
+func (stdinFixtureAgent) Env() map[string]string { return nil }
+
+func (stdinFixtureAgent) BuildLaunch(prompt string) agent.Launch {
+	return agent.Launch{
+		Argv:  []string{"sh", "-c", `test "$(cat)" = "stdin prompt"`},
+		Stdin: prompt,
+	}
+}
+
+func (stdinFixtureAgent) ParseStreamLine(string) ([]agent.AgentEvent, error) {
+	return nil, nil
+}
+
 func TestRun_appliesAgentEnvInSandboxExec(t *testing.T) {
 	t.Parallel()
 
@@ -43,11 +82,11 @@ func (envFixtureAgent) Env() map[string]string {
 	return map[string]string{"MARKER": "value"}
 }
 
-func (envFixtureAgent) BuildCommand(string) []string {
-	return []string{
+func (envFixtureAgent) BuildLaunch(string) agent.Launch {
+	return agent.Launch{Argv: []string{
 		"sh", "-c",
 		`test "$MARKER" = "value"`,
-	}
+	}}
 }
 
 func (envFixtureAgent) ParseStreamLine(string) ([]agent.AgentEvent, error) {
@@ -97,11 +136,11 @@ func (cleanExitFixtureAgent) Name() string { return "fixture" }
 
 func (cleanExitFixtureAgent) Env() map[string]string { return nil }
 
-func (cleanExitFixtureAgent) BuildCommand(string) []string {
-	return []string{
+func (cleanExitFixtureAgent) BuildLaunch(string) agent.Launch {
+	return agent.Launch{Argv: []string{
 		"sh", "-c",
 		`printf '%s\n' 'done'`,
-	}
+	}}
 }
 
 func (cleanExitFixtureAgent) ParseStreamLine(string) ([]agent.AgentEvent, error) {
@@ -142,11 +181,11 @@ func (a *jsonlFixtureAgent) Name() string { return "jsonl-fixture" }
 
 func (a *jsonlFixtureAgent) Env() map[string]string { return nil }
 
-func (a *jsonlFixtureAgent) BuildCommand(string) []string {
-	return []string{
+func (a *jsonlFixtureAgent) BuildLaunch(string) agent.Launch {
+	return agent.Launch{Argv: []string{
 		"sh", "-c",
 		`printf '%s\n' '{"type":"text","content":"hi"}' '{"type":"text","content":"bye"}'`,
-	}
+	}}
 }
 
 func (a *jsonlFixtureAgent) ParseStreamLine(line string) ([]agent.AgentEvent, error) {
@@ -189,8 +228,8 @@ func (silentFixtureAgent) Name() string { return "silent" }
 
 func (silentFixtureAgent) Env() map[string]string { return nil }
 
-func (silentFixtureAgent) BuildCommand(string) []string {
-	return []string{"sleep", "3600"}
+func (silentFixtureAgent) BuildLaunch(string) agent.Launch {
+	return agent.Launch{Argv: []string{"sleep", "3600"}}
 }
 
 func (silentFixtureAgent) ParseStreamLine(string) ([]agent.AgentEvent, error) {
@@ -230,11 +269,11 @@ func (stderrFailureFixtureAgent) Name() string { return "opencode" }
 
 func (stderrFailureFixtureAgent) Env() map[string]string { return nil }
 
-func (stderrFailureFixtureAgent) BuildCommand(string) []string {
-	return []string{
+func (stderrFailureFixtureAgent) BuildLaunch(string) agent.Launch {
+	return agent.Launch{Argv: []string{
 		"sh", "-c",
 		`echo 'permission denied' >&2; exit 17`,
-	}
+	}}
 }
 
 func (stderrFailureFixtureAgent) ParseStreamLine(string) ([]agent.AgentEvent, error) {

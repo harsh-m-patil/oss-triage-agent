@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -17,9 +18,9 @@ type echoJSONProvider struct{}
 
 func (echoJSONProvider) Name() string { return "echo-json" }
 func (echoJSONProvider) Env() map[string]string { return nil }
-func (echoJSONProvider) BuildCommand(prompt string) []string {
+func (echoJSONProvider) BuildLaunch(prompt string) agent.Launch {
 	line := fmt.Sprintf(`{"type":"text","content":%q}`, prompt)
-	return []string{"echo", line}
+	return agent.Launch{Argv: []string{"echo", line}}
 }
 func (echoJSONProvider) ParseStreamLine(line string) ([]agent.AgentEvent, error) {
 	var raw struct {
@@ -66,12 +67,12 @@ type stderrFloodProvider struct{}
 
 func (stderrFloodProvider) Name() string { return "stderr-flood" }
 func (stderrFloodProvider) Env() map[string]string { return nil }
-func (stderrFloodProvider) BuildCommand(prompt string) []string {
+func (stderrFloodProvider) BuildLaunch(prompt string) agent.Launch {
 	script := fmt.Sprintf(
 		`i=0; while [ $i -lt 5000 ]; do echo "stderr-$i" >&2; i=$((i+1)); done; echo '{"type":"text","content":%q}'`,
 		prompt,
 	)
-	return []string{"sh", "-c", script}
+	return agent.Launch{Argv: []string{"sh", "-c", script}}
 }
 func (stderrFloodProvider) ParseStreamLine(line string) ([]agent.AgentEvent, error) {
 	return echoJSONProvider{}.ParseStreamLine(line)
@@ -93,6 +94,70 @@ func TestStreamAgentEvents_drainsStderrWhileReadingStdout(t *testing.T) {
 	}
 	if errOut.Len() == 0 {
 		t.Fatal("stderr was not drained")
+	}
+}
+
+type stdinEchoProvider struct{}
+
+func (stdinEchoProvider) Name() string { return "stdin-echo" }
+func (stdinEchoProvider) Env() map[string]string { return nil }
+func (stdinEchoProvider) BuildLaunch(prompt string) agent.Launch {
+	return agent.Launch{Argv: []string{"cat"}, Stdin: prompt}
+}
+func (stdinEchoProvider) ParseStreamLine(line string) ([]agent.AgentEvent, error) {
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return nil, nil
+	}
+	return []agent.AgentEvent{{Kind: agent.EventText, Text: line}}, nil
+}
+
+func TestStreamAgentEvents_deliversStdinToCommand(t *testing.T) {
+	t.Parallel()
+
+	var out bytes.Buffer
+	err := streamAgentEvents(context.Background(), stdinEchoProvider{}, "stdin hello", &out, io.Discard)
+	if err != nil {
+		t.Fatalf("streamAgentEvents: %v", err)
+	}
+	if !strings.Contains(out.String(), `"text":"stdin hello"`) {
+		t.Fatalf("stdout = %q, want normalized stdin prompt event", out.String())
+	}
+}
+
+func TestResolveAgentProvider_selectsPi(t *testing.T) {
+	t.Parallel()
+
+	agentProvider = "pi"
+	agentModel = "claude-sonnet-4"
+	agentThinking = "high"
+	agentSession = "sess-1"
+	t.Cleanup(func() {
+		agentProvider = "opencode"
+		agentModel = "opencode/big-pickle"
+		agentThinking = ""
+		agentSession = ""
+	})
+
+	provider, binary, err := resolveAgentProvider("pi")
+	if err != nil {
+		t.Fatalf("resolveAgentProvider: %v", err)
+	}
+	if binary != "pi" {
+		t.Fatalf("binary = %q, want pi", binary)
+	}
+	launch := provider.BuildLaunch("hello")
+	want := agent.Launch{
+		Argv: []string{
+			"pi", "-p", "--mode", "json",
+			"--model", "claude-sonnet-4",
+			"--thinking", "high",
+			"--session", "sess-1",
+		},
+		Stdin: "hello",
+	}
+	if !reflect.DeepEqual(launch, want) {
+		t.Fatalf("BuildLaunch() = %+v, want %+v", launch, want)
 	}
 }
 

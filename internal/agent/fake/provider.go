@@ -21,8 +21,8 @@ func (p *Provider) Name() string { return "fake" }
 
 func (p *Provider) Env() map[string]string { return nil }
 
-func (p *Provider) BuildCommand(prompt string) []string {
-	return []string{"echo", prompt}
+func (p *Provider) BuildLaunch(prompt string) agent.Launch {
+	return agent.Launch{Argv: []string{"echo", prompt}}
 }
 
 func (p *Provider) ParseStreamLine(line string) ([]agent.AgentEvent, error) {

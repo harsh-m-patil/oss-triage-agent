@@ -1,0 +1,1 @@
+{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"Done."}],"usage":{"input":1200,"output":340,"cacheRead":0,"cacheWrite":0,"totalTokens":1540},"stopReason":"stop"}}

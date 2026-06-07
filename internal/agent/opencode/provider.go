@@ -46,7 +46,7 @@ func (p *Provider) Env() map[string]string {
 	return out
 }
 
-func (p *Provider) BuildCommand(prompt string) []string {
+func (p *Provider) BuildLaunch(prompt string) agent.Launch {
 	args := []string{"opencode", "run", "--format", "json", "--model", p.model}
 	if p.opts.Variant != "" {
 		args = append(args, "--variant", p.opts.Variant)
@@ -57,7 +57,7 @@ func (p *Provider) BuildCommand(prompt string) []string {
 	if p.opts.DangerouslySkipPermissions {
 		args = append(args, "--dangerously-skip-permissions")
 	}
-	return append(args, prompt)
+	return agent.Launch{Argv: append(args, prompt)}
 }
 
 func (p *Provider) ParseStreamLine(line string) ([]agent.AgentEvent, error) {

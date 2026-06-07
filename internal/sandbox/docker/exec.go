@@ -20,12 +20,14 @@ func runContainerExec(
 	cli *client.Client,
 	containerID, workDir, command string,
 	args []string,
+	stdin string,
 	env map[string]string,
 	onStdout, onStderr func(line string),
 ) error {
 	execCfg := container.ExecOptions{
 		AttachStdout: true,
 		AttachStderr: true,
+		AttachStdin:  stdin != "",
 		Cmd:          append([]string{command}, args...),
 		Env:          dockerEnv(env),
 		WorkingDir:   workDir,
@@ -40,6 +42,13 @@ func runContainerExec(
 		return err
 	}
 	defer attach.Close()
+
+	if stdin != "" {
+		if _, err := attach.Conn.Write([]byte(stdin)); err != nil {
+			return err
+		}
+		_ = attach.CloseWrite()
+	}
 
 	stdoutR, stdoutW := io.Pipe()
 	stderrR, stderrW := io.Pipe()

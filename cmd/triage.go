@@ -27,17 +27,18 @@ var triageCmd = &cobra.Command{
 	Long: `Assess GitHub issues and apply triage output automatically.
 
 Without --issue, lists open issues that are unlabeled or carry needs-triage.
-With --issue, runs OpenCode with the embedded triage skill, posts a comment
-prefixed with the AI triage disclaimer, and swaps category/state labels.
+With --issue, runs the selected agent with the embedded triage skill, posts a
+comment prefixed with the AI triage disclaimer, and swaps category/state labels.
 
-Requires GITHUB_TOKEN and opencode on PATH. Resolves the GitHub repository
-from remote.origin.url in --repo (default: current directory).`,
+Requires GITHUB_TOKEN. With --sandbox nosandbox, the selected agent binary
+(opencode or pi) must be on PATH. Resolves the GitHub repository from
+remote.origin.url in --repo (default: current directory).`,
 	Example: `  # List candidates needing triage
   oss-triage-agent triage
 
   # Triage a single issue
   oss-triage-agent triage --issue 42
-  oss-triage-agent triage --issue 42 --repo /path/to/target-repo`,
+  oss-triage-agent triage --issue 42 --provider pi --model claude-sonnet-4`,
 	RunE: runTriage,
 }
 
@@ -49,9 +50,12 @@ type triageOptions struct {
 type triageRuntimeOptions struct {
 	triageOptions
 	RepoPath                     string
+	Provider                     string
 	Model                        string
 	Variant                      string
 	AgentName                    string
+	Thinking                     string
+	Session                      string
 	SandboxMode                  string
 	DangerouslySkipPermissions   bool
 }
@@ -83,9 +87,12 @@ func runTriage(cmd *cobra.Command, args []string) error {
 			IdleTimeout: triageIdleTimeout,
 		},
 		RepoPath:                   triageRepoPath,
+		Provider:                   triageProvider,
 		Model:                      triageModel,
 		Variant:                    triageVariant,
 		AgentName:                  triageAgentName,
+		Thinking:                   triageThinking,
+		Session:                    triageSession,
 		SandboxMode:                triageSandboxMode,
 		DangerouslySkipPermissions: triageDangerouslySkipPermissions,
 	}

@@ -1,0 +1,1 @@
+{"type":"tool_execution_start","toolCallId":"tool_1","toolName":"bash","args":{"command":"npm test"}}
