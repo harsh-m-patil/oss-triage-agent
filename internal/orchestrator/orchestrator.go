@@ -95,8 +95,8 @@ func (o *Orchestrator) Run(ctx context.Context, in RunInput) (RunSummary, error)
 	if prompt == "" {
 		prompt = it.Body
 	}
-	argv := o.deps.Agent.BuildCommand(prompt)
-	if len(argv) == 0 {
+	launch := o.deps.Agent.BuildLaunch(prompt)
+	if len(launch.Argv) == 0 {
 		return RunSummary{}, fmt.Errorf("agent %q returned empty command", o.deps.Agent.Name())
 	}
 
@@ -109,8 +109,9 @@ func (o *Orchestrator) Run(ctx context.Context, in RunInput) (RunSummary, error)
 	err = o.runAgent(
 		ctx,
 		handle,
-		argv[0],
-		argv[1:],
+		launch.Argv[0],
+		launch.Argv[1:],
+		launch.Stdin,
 		o.deps.Agent.Env(),
 		in.IdleTimeout,
 		in.Progress,

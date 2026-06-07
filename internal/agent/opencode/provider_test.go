@@ -19,18 +19,20 @@ func TestProvider_Name_returnsOpenCode(t *testing.T) {
 	}
 }
 
-func TestProvider_BuildCommand_includesModelAndPrompt(t *testing.T) {
+func TestProvider_BuildLaunch_includesModelAndPrompt(t *testing.T) {
 	t.Parallel()
 
 	p := opencode.NewProvider("opencode/big-pickle", opencode.Options{})
-	got := p.BuildCommand("do something")
-	want := []string{
-		"opencode", "run", "--format", "json",
-		"--model", "opencode/big-pickle",
-		"do something",
+	got := p.BuildLaunch("do something")
+	want := agent.Launch{
+		Argv: []string{
+			"opencode", "run", "--format", "json",
+			"--model", "opencode/big-pickle",
+			"do something",
+		},
 	}
 	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("BuildCommand() = %v, want %v", got, want)
+		t.Fatalf("BuildLaunch() = %+v, want %+v", got, want)
 	}
 }
 
@@ -90,7 +92,7 @@ func TestProvider_ParseStreamLine_fixture(t *testing.T) {
 	}
 }
 
-func TestProvider_BuildCommand_includesOptionalFlags(t *testing.T) {
+func TestProvider_BuildLaunch_includesOptionalFlags(t *testing.T) {
 	t.Parallel()
 
 	p := opencode.NewProvider("opencode/big-pickle", opencode.Options{
@@ -98,17 +100,19 @@ func TestProvider_BuildCommand_includesOptionalFlags(t *testing.T) {
 		Agent:                      "build",
 		DangerouslySkipPermissions: true,
 	})
-	got := p.BuildCommand("do something")
-	want := []string{
-		"opencode", "run", "--format", "json",
-		"--model", "opencode/big-pickle",
-		"--variant", "high",
-		"--agent", "build",
-		"--dangerously-skip-permissions",
-		"do something",
+	got := p.BuildLaunch("do something")
+	want := agent.Launch{
+		Argv: []string{
+			"opencode", "run", "--format", "json",
+			"--model", "opencode/big-pickle",
+			"--variant", "high",
+			"--agent", "build",
+			"--dangerously-skip-permissions",
+			"do something",
+		},
 	}
 	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("BuildCommand() = %v, want %v", got, want)
+		t.Fatalf("BuildLaunch() = %+v, want %+v", got, want)
 	}
 }
 

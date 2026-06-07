@@ -5,17 +5,21 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 
 	"github.com/harsh-m-patil/oss-triage-agent/internal/sandbox/streamio"
 )
 
-func runCommand(ctx context.Context, dir, command string, args []string, env map[string]string, onStdout, onStderr func(line string)) error {
+func runCommand(ctx context.Context, dir, command string, args []string, stdin string, env map[string]string, onStdout, onStderr func(line string)) error {
 	cmd := exec.CommandContext(ctx, command, args...)
 	cmd.Dir = dir
 	cmd.Env = os.Environ()
 	for k, v := range env {
 		cmd.Env = append(cmd.Env, k+"="+v)
+	}
+	if stdin != "" {
+		cmd.Stdin = strings.NewReader(stdin)
 	}
 
 	stdout, err := cmd.StdoutPipe()

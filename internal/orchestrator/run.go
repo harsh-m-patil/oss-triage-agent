@@ -30,6 +30,7 @@ func (o *Orchestrator) runAgent(
 	handle sandbox.SandboxHandle,
 	command string,
 	args []string,
+	stdin string,
 	env map[string]string,
 	idleTimeout time.Duration,
 	progress func(ProgressEvent),
@@ -124,7 +125,7 @@ func (o *Orchestrator) runAgent(
 
 	execDone := make(chan error, 1)
 	go func() {
-		execDone <- handle.Exec(execCtx, command, args, env, onStdout, onStderr)
+		execDone <- handle.Exec(execCtx, command, args, stdin, env, onStdout, onStderr)
 	}()
 
 	for {

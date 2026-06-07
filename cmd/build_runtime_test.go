@@ -71,9 +71,12 @@ func TestRunBuild_passesConfiguredFlagsToResolverAndWorkflow(t *testing.T) {
 	defer restore()
 
 	buildRepoPath = "/repo"
-	buildModel = "opencode/test"
+	buildProvider = workflowProviderPi
+	buildModel = "claude-sonnet-4"
 	buildVariant = "variant-a"
 	buildAgentName = "builder"
+	buildThinking = "high"
+	buildSession = "sess-abc"
 	buildSandboxMode = buildSandboxNoSandbox
 	buildDangerouslySkipPermissions = true
 	buildIdleTimeout = 2 * time.Minute
@@ -107,8 +110,11 @@ func TestRunBuild_passesConfiguredFlagsToResolverAndWorkflow(t *testing.T) {
 	if gotResolve.IssueID != "9" {
 		t.Fatalf("resolver IssueID = %q, want 9", gotResolve.IssueID)
 	}
-	if gotResolve.RepoPath != "/repo" || gotResolve.Model != "opencode/test" {
+	if gotResolve.RepoPath != "/repo" || gotResolve.Provider != workflowProviderPi || gotResolve.Model != "claude-sonnet-4" {
 		t.Fatalf("resolver opts = %+v", gotResolve)
+	}
+	if gotResolve.Thinking != "high" || gotResolve.Session != "sess-abc" {
+		t.Fatalf("resolver pi opts = %+v", gotResolve)
 	}
 	if gotResolve.SandboxMode != buildSandboxNoSandbox || !gotResolve.DangerouslySkipPermissions {
 		t.Fatalf("resolver opts = %+v", gotResolve)
@@ -126,9 +132,12 @@ func TestRunBuild_passesConfiguredFlagsToResolverAndWorkflow(t *testing.T) {
 
 func snapshotBuildGlobals() func() {
 	prevRepoPath := buildRepoPath
+	prevProvider := buildProvider
 	prevModel := buildModel
 	prevVariant := buildVariant
 	prevAgentName := buildAgentName
+	prevThinking := buildThinking
+	prevSession := buildSession
 	prevSandboxMode := buildSandboxMode
 	prevSkipPermissions := buildDangerouslySkipPermissions
 	prevIdleTimeout := buildIdleTimeout
@@ -138,9 +147,12 @@ func snapshotBuildGlobals() func() {
 
 	return func() {
 		buildRepoPath = prevRepoPath
+		buildProvider = prevProvider
 		buildModel = prevModel
 		buildVariant = prevVariant
 		buildAgentName = prevAgentName
+		buildThinking = prevThinking
+		buildSession = prevSession
 		buildSandboxMode = prevSandboxMode
 		buildDangerouslySkipPermissions = prevSkipPermissions
 		buildIdleTimeout = prevIdleTimeout

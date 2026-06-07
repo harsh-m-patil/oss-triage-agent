@@ -41,6 +41,34 @@ func TestProvider_Create_returnsNoneHandleBoundToWorkspace(t *testing.T) {
 	}
 }
 
+func TestHandle_Exec_deliversStdinToCommand(t *testing.T) {
+	t.Parallel()
+
+	p := nosandbox.NewProvider()
+	handle, err := p.Create(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	defer handle.Close()
+
+	var stdout []string
+	err = handle.Exec(
+		context.Background(),
+		"sh",
+		[]string{"-c", `cat`},
+		"prompt body",
+		nil,
+		func(line string) { stdout = append(stdout, line) },
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	if len(stdout) != 1 || stdout[0] != "prompt body" {
+		t.Fatalf("stdout = %v, want [prompt body]", stdout)
+	}
+}
+
 func TestHandle_Exec_streamsStdoutLinesInOrder(t *testing.T) {
 	t.Parallel()
 
@@ -56,6 +84,7 @@ func TestHandle_Exec_streamsStdoutLinesInOrder(t *testing.T) {
 		context.Background(),
 		"sh",
 		[]string{"-c", "echo one; echo two; echo three"},
+		"",
 		nil,
 		func(line string) { stdout = append(stdout, line) },
 		nil,
@@ -90,6 +119,7 @@ func TestHandle_Exec_deliversEmptyStdoutLines(t *testing.T) {
 		context.Background(),
 		"sh",
 		[]string{"-c", "printf 'a\n\nb\n'"},
+		"",
 		nil,
 		func(line string) { stdout = append(stdout, line) },
 		nil,
@@ -124,6 +154,7 @@ func TestHandle_Exec_flushesPartialStdoutLineOnExit(t *testing.T) {
 		context.Background(),
 		"sh",
 		[]string{"-c", "printf 'no trailing newline'"},
+		"",
 		nil,
 		func(line string) { stdout = append(stdout, line) },
 		nil,
@@ -154,6 +185,7 @@ func TestHandle_Exec_invokesStdoutCallbackWhileProcessRuns(t *testing.T) {
 			context.Background(),
 			"sh",
 			[]string{"-c", "echo first; sleep 0.2; echo second"},
+			"",
 			nil,
 			func(line string) {
 				if line == "first" {
@@ -201,6 +233,7 @@ func TestHandle_Exec_streamsStdoutLineLongerThanScannerDefaultLimit(t *testing.T
 			`line=$(head -c %d /dev/zero | tr '\0' 'x'); printf '%%s\n' "$line"; echo trailer`,
 			longLineBytes,
 		)},
+		"",
 		nil,
 		func(line string) { stdout = append(stdout, line) },
 		nil,

@@ -5,6 +5,6 @@ package agent
 type AgentProvider interface {
 	Name() string
 	Env() map[string]string
-	BuildCommand(prompt string) []string
+	BuildLaunch(prompt string) Launch
 	ParseStreamLine(line string) ([]AgentEvent, error)
 }

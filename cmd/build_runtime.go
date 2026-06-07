@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/harsh-m-patil/oss-triage-agent/internal/agent/opencode"
 	"github.com/harsh-m-patil/oss-triage-agent/internal/git/local"
 	issuegithub "github.com/harsh-m-patil/oss-triage-agent/internal/issue/github"
 	"github.com/harsh-m-patil/oss-triage-agent/internal/prompt"
@@ -25,9 +24,12 @@ const (
 
 var (
 	buildRepoPath                   string
+	buildProvider                   string
 	buildModel                      string
 	buildVariant                    string
 	buildAgentName                  string
+	buildThinking                   string
+	buildSession                    string
 	buildSandboxMode                string
 	buildDangerouslySkipPermissions bool
 	buildIdleTimeout                time.Duration
@@ -35,9 +37,12 @@ var (
 
 func init() {
 	buildCmd.Flags().StringVar(&buildRepoPath, "repo", ".", "Path to the target git repository root")
+	buildCmd.Flags().StringVar(&buildProvider, "provider", workflowProviderOpenCode, "Agent provider (opencode or pi)")
 	buildCmd.Flags().StringVar(&buildModel, "model", "opencode/big-pickle", "Model passed to the agent provider")
 	buildCmd.Flags().StringVar(&buildVariant, "variant", "", "OpenCode --variant flag")
 	buildCmd.Flags().StringVar(&buildAgentName, "agent", "", "OpenCode --agent flag")
+	buildCmd.Flags().StringVar(&buildThinking, "thinking", "", "Pi --thinking flag (off, minimal, low, medium, high, xhigh)")
+	buildCmd.Flags().StringVar(&buildSession, "session", "", "Pi --session flag (resume session id)")
 	buildCmd.Flags().StringVar(&buildSandboxMode, "sandbox", buildSandboxDocker, "Sandbox mode: docker or nosandbox")
 	buildCmd.Flags().BoolVar(&buildDangerouslySkipPermissions, "dangerously-skip-permissions", false, "OpenCode --dangerously-skip-permissions flag")
 	buildCmd.Flags().DurationVar(&buildIdleTimeout, "idle-timeout", defaultBuildIdleTimeout, "Maximum idle time before the run is cancelled")
@@ -60,17 +65,25 @@ func resolveBuildWorkflowDeps(opts buildRuntimeOptions) (buildWorkflowDeps, erro
 	if err != nil {
 		return buildWorkflowDeps{}, err
 	}
+	agentProvider, err := resolveWorkflowAgent(workflowAgentConfig{
+		Provider:                   opts.Provider,
+		Model:                      opts.Model,
+		Variant:                    opts.Variant,
+		AgentName:                  opts.AgentName,
+		Thinking:                   opts.Thinking,
+		Session:                    opts.Session,
+		DangerouslySkipPermissions: opts.DangerouslySkipPermissions,
+	})
+	if err != nil {
+		return buildWorkflowDeps{}, err
+	}
+
 	return buildWorkflowDeps{
 		Issues: tracker,
 		Repo:   local.New(repoRoot),
 		Sandbox: sandboxProvider,
-		Agent: opencode.NewProvider(opts.Model, opencode.Options{
-			Variant:                    opts.Variant,
-			Agent:                      opts.AgentName,
-			DangerouslySkipPermissions: opts.DangerouslySkipPermissions,
-			Env:                        opencodeEnvFromOS(),
-		}),
-		Prompt: prompt.Builder{},
+		Agent:   agentProvider,
+		Prompt:  prompt.Builder{},
 	}, nil
 }
 

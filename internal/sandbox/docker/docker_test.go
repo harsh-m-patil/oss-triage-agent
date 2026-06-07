@@ -74,6 +74,7 @@ func TestHandle_Exec_runsCommandInBindMountedWorkspace(t *testing.T) {
 		context.Background(),
 		"cat",
 		[]string{"marker"},
+		"",
 		nil,
 		func(line string) { stdout = append(stdout, line) },
 		nil,
@@ -90,6 +91,7 @@ func TestHandle_Exec_runsCommandInBindMountedWorkspace(t *testing.T) {
 		context.Background(),
 		"echo",
 		[]string{"hello"},
+		"",
 		nil,
 		func(line string) { stdout = append(stdout, line) },
 		nil,
@@ -124,6 +126,7 @@ func TestHandle_Exec_passesEnvToCommand(t *testing.T) {
 		context.Background(),
 		"sh",
 		[]string{"-c", `printf '%s\n' "$MARKER"`},
+		"",
 		map[string]string{"MARKER": "value"},
 		func(line string) { stdout = append(stdout, line) },
 		nil,
@@ -133,6 +136,43 @@ func TestHandle_Exec_passesEnvToCommand(t *testing.T) {
 	}
 	if len(stdout) != 1 || stdout[0] != "value" {
 		t.Fatalf("stdout = %v, want [value]", stdout)
+	}
+}
+
+func TestHandle_Exec_hasPiAvailableWithoutHostBinary(t *testing.T) {
+	if !dockerAvailable(t) {
+		t.Skip("Docker daemon not available")
+	}
+
+	t.Setenv("PATH", "")
+
+	p, err := dockerprovider.NewProvider()
+	if err != nil {
+		t.Fatalf("NewProvider: %v", err)
+	}
+
+	handle, err := p.Create(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	defer handle.Close()
+
+	var stdout []string
+	var stderr []string
+	err = handle.Exec(
+		context.Background(),
+		"pi",
+		[]string{"--version"},
+		"",
+		nil,
+		func(line string) { stdout = append(stdout, line) },
+		func(line string) { stderr = append(stderr, line) },
+	)
+	if err != nil {
+		t.Fatalf("Exec pi --version: %v (stdout=%v stderr=%v)", err, stdout, stderr)
+	}
+	if len(stdout) == 0 && len(stderr) == 0 {
+		t.Fatal("pi --version produced no output")
 	}
 }
 
@@ -161,6 +201,7 @@ func TestHandle_Exec_hasOpencodeAvailableWithoutHostBinary(t *testing.T) {
 		context.Background(),
 		"opencode",
 		[]string{"--version"},
+		"",
 		nil,
 		func(line string) { stdout = append(stdout, line) },
 		func(line string) { stderr = append(stderr, line) },
@@ -189,7 +230,7 @@ func TestHandle_Close_stopsContainerAndIsIdempotent(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	if err := handle.Exec(context.Background(), "echo", []string{"before"}, nil, nil, nil); err != nil {
+	if err := handle.Exec(context.Background(), "echo", []string{"before"}, "", nil, nil, nil); err != nil {
 		t.Fatalf("Exec before Close: %v", err)
 	}
 
@@ -200,7 +241,7 @@ func TestHandle_Close_stopsContainerAndIsIdempotent(t *testing.T) {
 		t.Fatalf("second Close: %v", err)
 	}
 
-	err = handle.Exec(context.Background(), "echo", []string{"after"}, nil, nil, nil)
+	err = handle.Exec(context.Background(), "echo", []string{"after"}, "", nil, nil, nil)
 	if err == nil {
 		t.Fatal("Exec after Close: want error, got nil")
 	}
@@ -230,6 +271,7 @@ func TestHandle_Exec_invokesStdoutCallbackWhileProcessRuns(t *testing.T) {
 			context.Background(),
 			"sh",
 			[]string{"-c", "echo first; sleep 0.2; echo second"},
+			"",
 			nil,
 			func(line string) {
 				if line == "first" {
@@ -279,7 +321,7 @@ func TestHandle_Exec_returnsWhenContextCancelled(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- handle.Exec(ctx, "sleep", []string{"3600"}, nil, nil, nil)
+		done <- handle.Exec(ctx, "sleep", []string{"3600"}, "", nil, nil, nil)
 	}()
 
 	select {
